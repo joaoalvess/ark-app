@@ -65,4 +65,4 @@ Ark/
 
 ## 📄 License
 
-This project is for personal use.
+This project is licensed under the [MIT License](LICENSE).
