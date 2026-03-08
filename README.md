@@ -1,68 +1,68 @@
 # 🛡️ Ark
 
-**Seu copiloto invisível para entrevistas de emprego.**
+**Your invisible copilot for job interviews.**
 
-Ark é um app nativo para macOS que roda discretamente na menu bar, capturando áudio em tempo real (microfone + áudio do sistema), transcrevendo com Whisper e usando IA para sugerir respostas durante entrevistas.
+Ark is a native macOS app that runs discreetly in the menu bar, capturing audio in real time (microphone + system audio), transcribing with Whisper, and using AI to suggest answers during interviews.
 
 ---
 
 ## ✨ Features
 
-- 🎙️ **Captura de áudio dual** — grava simultaneamente o microfone (você) e o áudio do sistema (entrevistador)
-- 📝 **Transcrição em tempo real** — powered by Whisper (`large-v3`), com suporte nativo a português
-- 🤖 **Sugestões automáticas** — a IA analisa o que o entrevistador disse e sugere respostas na hora
-- 💬 **Chat integrado** — painel flutuante para fazer perguntas sobre a entrevista em andamento
-- 🔥 **Streaming de respostas** — respostas da IA aparecem em tempo real, sem esperar
-- ⚡ **Floating bar** — interface minimalista em formato pill que flutua sobre qualquer app
-- 🎯 **Menu bar** — controle rápido via ícone na barra de menus com atalho global (`⌘ + Enter`)
-- ⚙️ **Configurável** — modelo de IA, modelo Whisper, dispositivo de áudio, nível de raciocínio
+- 🎙️ **Dual audio capture** — records your microphone and system audio (interviewer) simultaneously
+- 📝 **Real-time transcription** — powered by Whisper (`large-v3`) with native Portuguese support
+- 🤖 **Auto suggestions** — AI analyzes what the interviewer said and suggests answers on the spot
+- 💬 **Built-in chat** — floating panel to ask questions about the ongoing interview
+- 🔥 **Streaming responses** — AI answers appear in real time, no waiting
+- ⚡ **Floating bar** — minimal pill-shaped interface that floats over any app
+- 🎯 **Menu bar** — quick controls via menu bar icon with global shortcut (`⌘ + Enter`)
+- ⚙️ **Configurable** — AI model, Whisper model, audio device, reasoning level
 
-## 🏗️ Arquitetura
+## 🏗️ Architecture
 
 ```
 Ark/
 ├── App/                    # AppDelegate, AppState, Constants
 ├── Models/                 # ChatMessage, Settings, TranscriptEntry
 ├── Services/
-│   ├── Audio/              # Captura de mic e áudio do sistema
-│   ├── Transcription/      # Whisper + gerenciamento de transcrição
-│   ├── AI/                 # Integração com Codex CLI
+│   ├── Audio/              # Mic & system audio capture
+│   ├── Transcription/      # Whisper + transcript management
+│   ├── AI/                 # Codex CLI integration
 │   └── Persistence/        # UserDefaults store
 ├── Views/
-│   ├── FloatingBar/        # Barra flutuante principal
-│   ├── ChatPanel/          # Painel de chat com IA
+│   ├── FloatingBar/        # Main floating bar
+│   ├── ChatPanel/          # AI chat panel
 │   ├── Components/         # GlassPanel, PulsingIndicator
-│   └── Settings/           # Telas de configuração
+│   └── Settings/           # Settings screens
 ├── Window/                 # FloatingPanelController
 └── Resources/              # Assets
 ```
 
-## 🔧 Requisitos
+## 🔧 Requirements
 
 - macOS 14.0+
 - Xcode 15+
-- [Codex CLI](https://github.com/openai/codex) instalado (`npm install -g @openai/codex`)
-- Permissões de microfone e gravação de tela
+- [Codex CLI](https://github.com/openai/codex) installed (`npm install -g @openai/codex`)
+- Microphone and screen recording permissions
 
-## 🚀 Como usar
+## 🚀 Getting Started
 
-1. Clone o repositório
-2. Abra `Ark.xcodeproj` no Xcode
+1. Clone the repository
+2. Open `Ark.xcodeproj` in Xcode
 3. Build and run (`⌘ + R`)
-4. O ícone 🎙️ aparece na menu bar
-5. Configure a API key nas configurações (`⌘ + ,`)
-6. Inicie a escuta com `⌘ + Enter` e abra o chat
+4. The 🎙️ icon appears in the menu bar
+5. Set up your API key in settings (`⌘ + ,`)
+6. Start listening with `⌘ + Enter` and open the chat
 
 ## 🛠️ Stack
 
-| Camada | Tecnologia |
-|--------|-----------|
+| Layer | Technology |
+|-------|-----------|
 | UI | SwiftUI + AppKit |
-| Áudio | AVFoundation + ScreenCaptureKit |
-| Transcrição | Whisper (local) |
-| IA | OpenAI Codex CLI |
-| Persistência | UserDefaults |
+| Audio | AVFoundation + ScreenCaptureKit |
+| Transcription | Whisper (on-device) |
+| AI | OpenAI Codex CLI |
+| Persistence | UserDefaults |
 
-## 📄 Licença
+## 📄 License
 
-Este projeto é de uso pessoal.
+This project is for personal use.
