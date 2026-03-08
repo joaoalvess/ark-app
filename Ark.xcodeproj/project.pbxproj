@@ -1,0 +1,580 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10001 /* ArkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10001 /* ArkApp.swift */; };
+		A10002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10002 /* AppDelegate.swift */; };
+		A10003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10003 /* AppState.swift */; };
+		A10004 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10004 /* Constants.swift */; };
+		A10005 /* TranscriptEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10005 /* TranscriptEntry.swift */; };
+		A10006 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10006 /* ChatMessage.swift */; };
+		A10007 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10007 /* Settings.swift */; };
+		A10008 /* MicrophoneCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10008 /* MicrophoneCaptureService.swift */; };
+		A10009 /* SystemAudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10009 /* SystemAudioCaptureService.swift */; };
+		A10010 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10010 /* AudioSessionManager.swift */; };
+		A10011 /* WhisperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10011 /* WhisperService.swift */; };
+		A10012 /* TranscriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10012 /* TranscriptManager.swift */; };
+		A10013 /* CodexCLIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10013 /* CodexCLIService.swift */; };
+		A10014 /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10014 /* PromptBuilder.swift */; };
+		A10015 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015 /* SettingsStore.swift */; };
+		A10016 /* FloatingBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10016 /* FloatingBarView.swift */; };
+		A10017 /* MicButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10017 /* MicButton.swift */; };
+		A10018 /* AskButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10018 /* AskButton.swift */; };
+		A10019 /* ChatPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10019 /* ChatPanelView.swift */; };
+		A10020 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10020 /* ChatInputView.swift */; };
+		A10021 /* ChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10021 /* ChatMessageView.swift */; };
+		A10022 /* SuggestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10022 /* SuggestionView.swift */; };
+		A10023 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10023 /* SettingsView.swift */; };
+		A10024 /* AudioSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10024 /* AudioSetupView.swift */; };
+		A10025 /* APIConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10025 /* APIConfigView.swift */; };
+		A10026 /* GlassPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10026 /* GlassPanel.swift */; };
+		A10027 /* PulsingIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10027 /* PulsingIndicator.swift */; };
+		A10028 /* FloatingPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10028 /* FloatingPanelController.swift */; };
+		A10029 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10029 /* Assets.xcassets */; };
+		A10030 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = D10001 /* WhisperKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B10001 /* ArkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArkApp.swift; sourceTree = "<group>"; };
+		B10002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B10003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		B10004 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		B10005 /* TranscriptEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEntry.swift; sourceTree = "<group>"; };
+		B10006 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		B10007 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		B10008 /* MicrophoneCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCaptureService.swift; sourceTree = "<group>"; };
+		B10009 /* SystemAudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCaptureService.swift; sourceTree = "<group>"; };
+		B10010 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		B10011 /* WhisperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperService.swift; sourceTree = "<group>"; };
+		B10012 /* TranscriptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptManager.swift; sourceTree = "<group>"; };
+		B10013 /* CodexCLIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexCLIService.swift; sourceTree = "<group>"; };
+		B10014 /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		B10015 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		B10016 /* FloatingBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingBarView.swift; sourceTree = "<group>"; };
+		B10017 /* MicButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicButton.swift; sourceTree = "<group>"; };
+		B10018 /* AskButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskButton.swift; sourceTree = "<group>"; };
+		B10019 /* ChatPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanelView.swift; sourceTree = "<group>"; };
+		B10020 /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
+		B10021 /* ChatMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageView.swift; sourceTree = "<group>"; };
+		B10022 /* SuggestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionView.swift; sourceTree = "<group>"; };
+		B10023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B10024 /* AudioSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSetupView.swift; sourceTree = "<group>"; };
+		B10025 /* APIConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfigView.swift; sourceTree = "<group>"; };
+		B10026 /* GlassPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassPanel.swift; sourceTree = "<group>"; };
+		B10027 /* PulsingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsingIndicator.swift; sourceTree = "<group>"; };
+		B10028 /* FloatingPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanelController.swift; sourceTree = "<group>"; };
+		B10029 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B10030 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10031 /* Entitlements.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Entitlements.entitlements; sourceTree = "<group>"; };
+		B10032 /* Ark.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ark.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C10001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10030 /* WhisperKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G10001 = {
+			isa = PBXGroup;
+			children = (
+				G10002 /* Ark */,
+				G10020 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		G10002 /* Ark */ = {
+			isa = PBXGroup;
+			children = (
+				B10001 /* ArkApp.swift */,
+				B10030 /* Info.plist */,
+				B10031 /* Entitlements.entitlements */,
+				G10003 /* App */,
+				G10004 /* Models */,
+				G10005 /* Services */,
+				G10010 /* Views */,
+				G10015 /* Window */,
+				G10016 /* Resources */,
+			);
+			path = Ark;
+			sourceTree = "<group>";
+		};
+		G10003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B10002 /* AppDelegate.swift */,
+				B10003 /* AppState.swift */,
+				B10004 /* Constants.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		G10004 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B10005 /* TranscriptEntry.swift */,
+				B10006 /* ChatMessage.swift */,
+				B10007 /* Settings.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		G10005 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				G10006 /* Audio */,
+				G10007 /* Transcription */,
+				G10008 /* AI */,
+				G10009 /* Persistence */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		G10006 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				B10008 /* MicrophoneCaptureService.swift */,
+				B10009 /* SystemAudioCaptureService.swift */,
+				B10010 /* AudioSessionManager.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		G10007 /* Transcription */ = {
+			isa = PBXGroup;
+			children = (
+				B10011 /* WhisperService.swift */,
+				B10012 /* TranscriptManager.swift */,
+			);
+			path = Transcription;
+			sourceTree = "<group>";
+		};
+		G10008 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				B10013 /* CodexCLIService.swift */,
+				B10014 /* PromptBuilder.swift */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
+		G10009 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				B10015 /* SettingsStore.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		G10010 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				G10011 /* FloatingBar */,
+				G10012 /* ChatPanel */,
+				G10013 /* Settings */,
+				G10014 /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		G10011 /* FloatingBar */ = {
+			isa = PBXGroup;
+			children = (
+				B10016 /* FloatingBarView.swift */,
+				B10017 /* MicButton.swift */,
+				B10018 /* AskButton.swift */,
+			);
+			path = FloatingBar;
+			sourceTree = "<group>";
+		};
+		G10012 /* ChatPanel */ = {
+			isa = PBXGroup;
+			children = (
+				B10019 /* ChatPanelView.swift */,
+				B10020 /* ChatInputView.swift */,
+				B10021 /* ChatMessageView.swift */,
+				B10022 /* SuggestionView.swift */,
+			);
+			path = ChatPanel;
+			sourceTree = "<group>";
+		};
+		G10013 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				B10023 /* SettingsView.swift */,
+				B10024 /* AudioSetupView.swift */,
+				B10025 /* APIConfigView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		G10014 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				B10026 /* GlassPanel.swift */,
+				B10027 /* PulsingIndicator.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		G10015 /* Window */ = {
+			isa = PBXGroup;
+			children = (
+				B10028 /* FloatingPanelController.swift */,
+			);
+			path = Window;
+			sourceTree = "<group>";
+		};
+		G10016 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B10029 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		G10020 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B10032 /* Ark.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		T10001 /* Ark */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = X10003 /* Build configuration list for PBXNativeTarget "Ark" */;
+			buildPhases = (
+				C10002 /* Sources */,
+				C10001 /* Frameworks */,
+				C10003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Ark;
+			packageProductDependencies = (
+				D10001 /* WhisperKit */,
+			);
+			productName = Ark;
+			productReference = B10032 /* Ark.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		P10001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					T10001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = X10001 /* Build configuration list for PBXProject "Ark" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = "pt-BR";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"pt-BR",
+				Base,
+			);
+			mainGroup = G10001;
+			packageReferences = (
+				E10001 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+			);
+			productRefGroup = G10020 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				T10001 /* Ark */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C10003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10029 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C10002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10001 /* ArkApp.swift in Sources */,
+				A10002 /* AppDelegate.swift in Sources */,
+				A10003 /* AppState.swift in Sources */,
+				A10004 /* Constants.swift in Sources */,
+				A10005 /* TranscriptEntry.swift in Sources */,
+				A10006 /* ChatMessage.swift in Sources */,
+				A10007 /* Settings.swift in Sources */,
+				A10008 /* MicrophoneCaptureService.swift in Sources */,
+				A10009 /* SystemAudioCaptureService.swift in Sources */,
+				A10010 /* AudioSessionManager.swift in Sources */,
+				A10011 /* WhisperService.swift in Sources */,
+				A10012 /* TranscriptManager.swift in Sources */,
+				A10013 /* CodexCLIService.swift in Sources */,
+				A10014 /* PromptBuilder.swift in Sources */,
+				A10015 /* SettingsStore.swift in Sources */,
+				A10016 /* FloatingBarView.swift in Sources */,
+				A10017 /* MicButton.swift in Sources */,
+				A10018 /* AskButton.swift in Sources */,
+				A10019 /* ChatPanelView.swift in Sources */,
+				A10020 /* ChatInputView.swift in Sources */,
+				A10021 /* ChatMessageView.swift in Sources */,
+				A10022 /* SuggestionView.swift in Sources */,
+				A10023 /* SettingsView.swift in Sources */,
+				A10024 /* AudioSetupView.swift in Sources */,
+				A10025 /* APIConfigView.swift in Sources */,
+				A10026 /* GlassPanel.swift in Sources */,
+				A10027 /* PulsingIndicator.swift in Sources */,
+				A10028 /* FloatingPanelController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		X10D01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		X10D02 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Ark/Entitlements.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Ark/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ark precisa acessar o microfone para transcrever a conversa da entrevista em tempo real.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.ark;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		X10R01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		X10R02 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Ark/Entitlements.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Ark/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ark precisa acessar o microfone para transcrever a conversa da entrevista em tempo real.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.ark;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		X10001 /* Build configuration list for PBXProject "Ark" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X10D01 /* Debug */,
+				X10R01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		X10003 /* Build configuration list for PBXNativeTarget "Ark" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X10D02 /* Debug */,
+				X10R02 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E10001 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D10001 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E10001 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = P10001 /* Project object */;
+}
