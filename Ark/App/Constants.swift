@@ -10,10 +10,12 @@ enum Constants {
     static let codexTimeoutSeconds: TimeInterval = 300
 
     enum UI {
-        static let barHeight: CGFloat = 44
-        static let barWidth: CGFloat = 280
-        static let chatPanelWidth: CGFloat = 380
+        static let barHeight: CGFloat = 48
+        static let barWidth: CGFloat = 260
+        static let chatPanelWidth: CGFloat = 420
         static let chatPanelHeight: CGFloat = 480
         static let cornerRadius: CGFloat = 22
+        static let iconButtonSize: CGFloat = 36
+        static let inputBarHeight: CGFloat = 52
     }
 }
