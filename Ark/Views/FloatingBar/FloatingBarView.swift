@@ -9,12 +9,16 @@ struct FloatingBarView: View {
             HStack(spacing: 12) {
                 // Settings button
                 SettingsLink {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                        Image(systemName: "safari")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(width: Constants.UI.iconButtonSize, height: Constants.UI.iconButtonSize)
                 }
                 .buttonStyle(.plain)
-                .frame(width: 36, height: 36)
 
                 Spacer()
 

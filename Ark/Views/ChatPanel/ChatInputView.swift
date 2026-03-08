@@ -7,20 +7,25 @@ struct ChatInputView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("Pergunte sobre sua conversa...", text: $text)
+            TextField("Pergunte sobre a tela ou conversa, ou ⌘↵ para Assistir", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .onSubmit { onSend() }
 
             Button(action: onSend) {
-                Image(systemName: isProcessing ? "stop.circle.fill" : "arrow.up.circle.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(text.isEmpty && !isProcessing ? Color.secondary : Color.accentColor)
+                ZStack {
+                    Circle()
+                        .fill(text.isEmpty && !isProcessing ? Color.secondary.opacity(0.3) : Color.accentColor)
+                        .frame(width: 28, height: 28)
+                    Image(systemName: isProcessing ? "stop.fill" : "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                }
             }
             .buttonStyle(.plain)
             .disabled(text.isEmpty && !isProcessing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .frame(height: Constants.UI.inputBarHeight)
     }
 }

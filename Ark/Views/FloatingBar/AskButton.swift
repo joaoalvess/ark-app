@@ -13,6 +13,8 @@ struct AskButton: View {
                     Text("Hide")
                         .font(.system(size: 13, weight: .semibold))
                 } else {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 10, weight: .bold))
                     Text("Ask")
                         .font(.system(size: 13, weight: .semibold))
                 }

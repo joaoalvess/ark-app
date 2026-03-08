@@ -7,6 +7,9 @@ struct MicButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+
                 Image(systemName: isListening ? "mic.fill" : "mic")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(isListening ? .red : .primary)
@@ -18,6 +21,6 @@ struct MicButton: View {
             }
         }
         .buttonStyle(.plain)
-        .frame(width: 36, height: 36)
+        .frame(width: Constants.UI.iconButtonSize, height: Constants.UI.iconButtonSize)
     }
 }
