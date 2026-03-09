@@ -42,6 +42,8 @@
 		A10033 /* InterviewAssistantEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10036 /* InterviewAssistantEngineTests.swift */; };
 		A10034 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B10037 /* XCTest.framework */; };
 		AE16C9E12F5F046400C8B254 /* ArkAudioDriver.pkg in Resources */ = {isa = PBXBuildFile; fileRef = AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */; };
+		AEA3EA392F5F08000058890C /* AudioDriverManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA3EA382F5F08000058890C /* AudioDriverManager.swift */; };
+		AEA3EA3B2F5F081A0058890C /* AggregateDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA3EA3A2F5F081A0058890C /* AggregateDeviceManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +58,8 @@
 
 /* Begin PBXFileReference section */
 		AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */ = {isa = PBXFileReference; lastKnownFileType = file; name = ArkAudioDriver.pkg; path = Ark/Resources/ArkAudioDriver.pkg; sourceTree = "<group>"; };
+		AEA3EA382F5F08000058890C /* AudioDriverManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDriverManager.swift; sourceTree = "<group>"; };
+		AEA3EA3A2F5F081A0058890C /* AggregateDeviceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AggregateDeviceManager.swift; sourceTree = "<group>"; };
 		B10001 /* ArkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArkApp.swift; sourceTree = "<group>"; };
 		B10002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B10003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -186,6 +190,8 @@
 			isa = PBXGroup;
 			children = (
 				B10008 /* MicrophoneCaptureService.swift */,
+				AEA3EA3A2F5F081A0058890C /* AggregateDeviceManager.swift */,
+				AEA3EA382F5F08000058890C /* AudioDriverManager.swift */,
 				B10009 /* SystemAudioCaptureService.swift */,
 				B10010 /* AudioSessionManager.swift */,
 			);
@@ -412,6 +418,7 @@
 				A10007 /* Settings.swift in Sources */,
 				A10008 /* MicrophoneCaptureService.swift in Sources */,
 				A10009 /* SystemAudioCaptureService.swift in Sources */,
+				AEA3EA3B2F5F081A0058890C /* AggregateDeviceManager.swift in Sources */,
 				A10010 /* AudioSessionManager.swift in Sources */,
 				A10011 /* WhisperService.swift in Sources */,
 				A10012 /* TranscriptManager.swift in Sources */,
@@ -433,6 +440,7 @@
 				A10028 /* FloatingPanelController.swift in Sources */,
 				A10031 /* AssistantProfile.swift in Sources */,
 				A10032 /* InterviewAssistantEngine.swift in Sources */,
+				AEA3EA392F5F08000058890C /* AudioDriverManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -17,9 +17,12 @@ Service-based architecture with Observable state, MVVM-influenced.
 AppState (central hub, @MainActor @Observable)
 ├── AudioSessionManager (orchestrates mic + system audio)
 │   ├── MicrophoneCaptureService (AVAudioEngine)
-│   └── SystemAudioCaptureService (ScreenCaptureKit)
+│   ├── SystemAudioCaptureService (AVAudioEngine via BlackHole)
+│   ├── AudioDriverManager (BlackHole detection/installation)
+│   └── AggregateDeviceManager (multi-output device lifecycle)
 ├── WhisperService (on-device STT via WhisperKit)
 ├── TranscriptManager (rolling 30-min transcript)
+├── InterviewAssistantEngine (turn-based suggestion state machine)
 ├── CodexCLIService (AI chat via Codex CLI subprocess)
 └── SettingsStore (UserDefaults persistence)
 ```
@@ -43,7 +46,7 @@ AppState (central hub, @MainActor @Observable)
 - `@Observable` / `@MainActor` for state (Observation framework, not Combine)
 - `@Bindable` in views for two-way bindings
 - `async/await` + `Task` for concurrency
-- `@unchecked Sendable` for thread-safe FFI wrappers (WhisperService, SystemAudioCaptureService)
+- `@unchecked Sendable` for thread-safe FFI wrappers (WhisperService, SystemAudioCaptureService, AggregateDeviceManager)
 - `NSLock` for thread-safe audio buffers
 
 ## Project Structure
@@ -51,11 +54,11 @@ AppState (central hub, @MainActor @Observable)
 ```
 Ark/
 ├── App/           AppState, AppDelegate, Constants
-├── Models/        ChatMessage, Settings, TranscriptEntry
+├── Models/        ChatMessage, Settings, TranscriptEntry, AssistantProfile
 ├── Services/
-│   ├── Audio/     AudioSessionManager, Mic/System capture
+│   ├── Audio/     AudioSessionManager, Mic/System capture, AudioDriverManager, AggregateDeviceManager
 │   ├── Transcription/  WhisperService, TranscriptManager
-│   ├── AI/        CodexCLIService, PromptBuilder
+│   ├── AI/        CodexCLIService, PromptBuilder, InterviewAssistantEngine
 │   └── Persistence/    SettingsStore
 ├── Views/
 │   ├── FloatingBar/    FloatingBarView, MicButton, AskButton
@@ -63,7 +66,7 @@ Ark/
 │   ├── Settings/       SettingsView, APIConfigView, AudioSetupView
 │   └── Components/     GlassPanel, PulsingIndicator
 ├── Window/        FloatingPanelController (NSPanel)
-└── Resources/     Assets.xcassets
+└── Resources/     Assets.xcassets, ArkAudioDriver.pkg
 ```
 
 ## Important Files
@@ -80,4 +83,5 @@ Ark/
 
 - **WhisperKit** (SPM) — on-device speech-to-text, model: `large-v3`, language: `pt`
 - **Codex CLI** (npm, external subprocess) — AI chat completions
-- macOS frameworks: AVFoundation, ScreenCaptureKit, AppKit, SwiftUI
+- **BlackHole 2ch** (virtual audio driver) — system audio capture without Screen Recording permission
+- macOS frameworks: AVFoundation, CoreAudio, AppKit, SwiftUI

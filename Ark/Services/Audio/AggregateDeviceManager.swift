@@ -135,13 +135,13 @@ final class AggregateDeviceManager: @unchecked Sendable {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var uid: CFString = "" as CFString
-        var dataSize = UInt32(MemoryLayout<CFString>.size)
+        var uid: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         let result = AudioObjectGetPropertyData(
             deviceID, &propAddress, 0, nil, &dataSize, &uid
         )
         guard result == noErr else { return nil }
-        return uid as String
+        return uid?.takeUnretainedValue() as String?
     }
 
     private func deviceIDFromUID(_ uid: String) -> AudioDeviceID? {
