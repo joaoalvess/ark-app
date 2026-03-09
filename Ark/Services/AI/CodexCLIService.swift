@@ -136,7 +136,6 @@ final class CodexCLIService {
 
         return fullResponse
     }
-
     func testConnection() async -> Bool {
         do {
             let (_, exitCode) = try await runCodexRaw(prompt: "respond ok")

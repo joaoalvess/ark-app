@@ -5,6 +5,20 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Perfil do Assistente") {
+                Picker("Perfil", selection: $appState.settingsStore.settings.assistantProfile) {
+                    ForEach(AssistantProfile.allCases, id: \.self) { profile in
+                        VStack(alignment: .leading) {
+                            Text(profile.displayName)
+                            Text(profile.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(profile)
+                    }
+                }
+            }
+
             APIConfigView(appState: appState)
 
             AudioSetupView(appState: appState)
@@ -72,6 +86,10 @@ struct SettingsView: View {
                 ) {
                     Text("Duracao do chunk: \(Int(appState.settingsStore.settings.chunkDuration))s")
                 }
+
+                Text("Mudanças na duração do chunk passam a valer na próxima escuta.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

@@ -1,12 +1,12 @@
 import Foundation
 
-struct TranscriptEntry: Identifiable, Equatable {
+struct TranscriptEntry: Identifiable, Equatable, Sendable {
     let id = UUID()
     let speaker: Speaker
     let text: String
     let timestamp: Date
 
-    enum Speaker: String {
+    enum Speaker: String, Sendable {
         case me = "Eu"
         case interviewer = "Entrevistador"
     }

@@ -6,22 +6,34 @@ final class AudioSessionManager {
     let micService = MicrophoneCaptureService()
     let systemService = SystemAudioCaptureService()
 
-    private var micBuffer: [Float] = []
-    private var systemBuffer: [Float] = []
-    private let bufferLock = NSLock()
+    final class AudioBufferStorage: @unchecked Sendable {
+        private let lock = NSLock()
+        var micBuffer: [Float] = []
+        var systemBuffer: [Float] = []
+        var onMicChunk: (([Float]) -> Void)?
+        var onSystemChunk: (([Float]) -> Void)?
+        var chunkSampleCount: Int
 
-    var onMicChunk: (([Float]) -> Void)?
-    var onSystemChunk: (([Float]) -> Void)?
+        init(chunkSampleCount: Int) {
+            self.chunkSampleCount = chunkSampleCount
+        }
 
-    private let chunkSampleCount: Int
+        func withLock<T>(_ body: (AudioBufferStorage) -> T) -> T {
+            lock.lock()
+            defer { lock.unlock() }
+            return body(self)
+        }
+    }
+
+    @ObservationIgnored nonisolated let storage = AudioBufferStorage(
+        chunkSampleCount: Int(Constants.sampleRate * Constants.chunkDuration)
+    )
 
     var isListening: Bool {
         micService.isCapturing || systemService.isCapturing
     }
 
     init() {
-        chunkSampleCount = Int(Constants.sampleRate * Constants.chunkDuration)
-
         micService.onAudioBuffer = { [weak self] buffer, _ in
             self?.handleBuffer(buffer, source: .mic)
         }
@@ -36,6 +48,15 @@ final class AudioSessionManager {
         micService.permissionGranted = granted
     }
 
+    func configure(chunkDuration: TimeInterval) {
+        let sanitizedDuration = max(1, chunkDuration)
+        storage.withLock { s in
+            s.chunkSampleCount = Int(Constants.sampleRate * sanitizedDuration)
+            s.micBuffer.removeAll()
+            s.systemBuffer.removeAll()
+        }
+    }
+
     func startListening(deviceID: String? = nil) async throws {
         try micService.start(deviceID: deviceID)
         try await systemService.start()
@@ -44,43 +65,38 @@ final class AudioSessionManager {
     func stopListening() async {
         micService.stop()
         await systemService.stop()
-        clearBuffers()
+        storage.withLock { s in
+            s.micBuffer.removeAll()
+            s.systemBuffer.removeAll()
+        }
     }
 
-    private func clearBuffers() {
-        bufferLock.lock()
-        micBuffer.removeAll()
-        systemBuffer.removeAll()
-        bufferLock.unlock()
-    }
-
-    private func handleBuffer(_ buffer: AVAudioPCMBuffer, source: AudioSource) {
+    nonisolated private func handleBuffer(_ buffer: AVAudioPCMBuffer, source: AudioSource) {
         guard let channelData = buffer.floatChannelData else { return }
         let frameCount = Int(buffer.frameLength)
         let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
 
-        bufferLock.lock()
-        switch source {
-        case .mic:
-            micBuffer.append(contentsOf: samples)
-            if micBuffer.count >= chunkSampleCount {
-                let chunk = Array(micBuffer.prefix(chunkSampleCount))
-                micBuffer.removeFirst(chunkSampleCount)
-                bufferLock.unlock()
-                onMicChunk?(chunk)
-                return
+        let result: (chunk: [Float], callback: (([Float]) -> Void)?)? = storage.withLock { s in
+            switch source {
+            case .mic:
+                s.micBuffer.append(contentsOf: samples)
+                if s.micBuffer.count >= s.chunkSampleCount {
+                    let chunk = Array(s.micBuffer.prefix(s.chunkSampleCount))
+                    s.micBuffer.removeFirst(s.chunkSampleCount)
+                    return (chunk, s.onMicChunk)
+                }
+            case .system:
+                s.systemBuffer.append(contentsOf: samples)
+                if s.systemBuffer.count >= s.chunkSampleCount {
+                    let chunk = Array(s.systemBuffer.prefix(s.chunkSampleCount))
+                    s.systemBuffer.removeFirst(s.chunkSampleCount)
+                    return (chunk, s.onSystemChunk)
+                }
             }
-        case .system:
-            systemBuffer.append(contentsOf: samples)
-            if systemBuffer.count >= chunkSampleCount {
-                let chunk = Array(systemBuffer.prefix(chunkSampleCount))
-                systemBuffer.removeFirst(chunkSampleCount)
-                bufferLock.unlock()
-                onSystemChunk?(chunk)
-                return
-            }
+            return nil
         }
-        bufferLock.unlock()
+
+        result?.callback?(result!.chunk)
     }
 
     private enum AudioSource {

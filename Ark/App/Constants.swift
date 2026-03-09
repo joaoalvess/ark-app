@@ -5,7 +5,7 @@ enum Constants {
     static let whisperModel = "large-v3"
     static let whisperLanguage = "pt"
     static let transcriptMaxDuration: TimeInterval = 30 * 60 // 30 minutes
-    static let chunkDuration: TimeInterval = 15 // seconds
+    static let chunkDuration: TimeInterval = 5 // seconds
     static let sampleRate: Double = 16_000
     static let codexTimeoutSeconds: TimeInterval = 300
 

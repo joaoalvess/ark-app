@@ -18,6 +18,10 @@ final class TranscriptManager {
         entries.last { $0.speaker == .interviewer }
     }
 
+    var lastCandidateEntry: TranscriptEntry? {
+        entries.last { $0.speaker == .me }
+    }
+
     func addEntry(speaker: TranscriptEntry.Speaker, text: String) {
         let entry = TranscriptEntry(speaker: speaker, text: text, timestamp: Date())
         entries.append(entry)
@@ -31,5 +35,9 @@ final class TranscriptManager {
     private func trimOldEntries() {
         let cutoff = Date().addingTimeInterval(-Constants.transcriptMaxDuration)
         entries.removeAll { $0.timestamp < cutoff }
+    }
+
+    func interviewTurnContext(trigger: InterviewTurnTrigger) -> InterviewTurnContext? {
+        InterviewAssistantEngine.makeContext(from: entries, trigger: trigger)
     }
 }

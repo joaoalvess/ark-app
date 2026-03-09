@@ -37,9 +37,25 @@
 		A10028 /* FloatingPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10028 /* FloatingPanelController.swift */; };
 		A10029 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10029 /* Assets.xcassets */; };
 		A10030 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = D10001 /* WhisperKit */; };
+		A10031 /* AssistantProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10033 /* AssistantProfile.swift */; };
+		A10032 /* InterviewAssistantEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10034 /* InterviewAssistantEngine.swift */; };
+		A10033 /* InterviewAssistantEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10036 /* InterviewAssistantEngineTests.swift */; };
+		A10034 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B10037 /* XCTest.framework */; };
+		AE16C9E12F5F046400C8B254 /* ArkAudioDriver.pkg in Resources */ = {isa = PBXBuildFile; fileRef = AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		I10001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = P10001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = T10001;
+			remoteInfo = Ark;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */ = {isa = PBXFileReference; lastKnownFileType = file; name = ArkAudioDriver.pkg; path = Ark/Resources/ArkAudioDriver.pkg; sourceTree = "<group>"; };
 		B10001 /* ArkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArkApp.swift; sourceTree = "<group>"; };
 		B10002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B10003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -72,6 +88,11 @@
 		B10030 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10031 /* Entitlements.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Entitlements.entitlements; sourceTree = "<group>"; };
 		B10032 /* Ark.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ark.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10033 /* AssistantProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantProfile.swift; sourceTree = "<group>"; };
+		B10034 /* InterviewAssistantEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterviewAssistantEngine.swift; sourceTree = "<group>"; };
+		B10035 /* ArkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ArkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10036 /* InterviewAssistantEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterviewAssistantEngineTests.swift; sourceTree = "<group>"; };
+		B10037 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,14 +104,33 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C10004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10034 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AE16C9DF2F5F002900C8B254 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				B10037 /* XCTest.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		G10001 = {
 			isa = PBXGroup;
 			children = (
+				AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */,
 				G10002 /* Ark */,
+				G10017 /* ArkTests */,
 				G10020 /* Products */,
+				AE16C9DF2F5F002900C8B254 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -126,6 +166,7 @@
 				B10005 /* TranscriptEntry.swift */,
 				B10006 /* ChatMessage.swift */,
 				B10007 /* Settings.swift */,
+				B10033 /* AssistantProfile.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -164,6 +205,7 @@
 			isa = PBXGroup;
 			children = (
 				B10013 /* CodexCLIService.swift */,
+				B10034 /* InterviewAssistantEngine.swift */,
 				B10014 /* PromptBuilder.swift */,
 			);
 			path = AI;
@@ -244,10 +286,19 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		G10017 /* ArkTests */ = {
+			isa = PBXGroup;
+			children = (
+				B10036 /* InterviewAssistantEngineTests.swift */,
+			);
+			path = ArkTests;
+			sourceTree = "<group>";
+		};
 		G10020 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				B10032 /* Ark.app */,
+				B10035 /* ArkTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -275,6 +326,25 @@
 			productReference = B10032 /* Ark.app */;
 			productType = "com.apple.product-type.application";
 		};
+		T10002 /* ArkTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = X10004 /* Build configuration list for PBXNativeTarget "ArkTests" */;
+			buildPhases = (
+				C10005 /* Sources */,
+				C10004 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				Y10001 /* PBXTargetDependency */,
+			);
+			name = ArkTests;
+			packageProductDependencies = (
+			);
+			productName = ArkTests;
+			productReference = B10035 /* ArkTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -287,6 +357,10 @@
 				TargetAttributes = {
 					T10001 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					T10002 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = T10001;
 					};
 				};
 			};
@@ -307,6 +381,7 @@
 			projectRoot = "";
 			targets = (
 				T10001 /* Ark */,
+				T10002 /* ArkTests */,
 			);
 		};
 /* End PBXProject section */
@@ -316,6 +391,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AE16C9E12F5F046400C8B254 /* ArkAudioDriver.pkg in Resources */,
 				A10029 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -355,10 +431,28 @@
 				A10026 /* GlassPanel.swift in Sources */,
 				A10027 /* PulsingIndicator.swift in Sources */,
 				A10028 /* FloatingPanelController.swift in Sources */,
+				A10031 /* AssistantProfile.swift in Sources */,
+				A10032 /* InterviewAssistantEngine.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10033 /* InterviewAssistantEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		Y10001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = T10001 /* Ark */;
+			targetProxy = I10001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		X10D01 /* Debug */ = {
@@ -452,6 +546,31 @@
 			};
 			name = Debug;
 		};
+		X10D03 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.ark.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ark.app/Contents/MacOS/Ark";
+			};
+			name = Debug;
+		};
 		X10R01 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -534,6 +653,31 @@
 			};
 			name = Release;
 		};
+		X10R03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = local.ark.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ark.app/Contents/MacOS/Ark";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -551,6 +695,15 @@
 			buildConfigurations = (
 				X10D02 /* Debug */,
 				X10R02 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		X10004 /* Build configuration list for PBXNativeTarget "ArkTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X10D03 /* Debug */,
+				X10R03 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
