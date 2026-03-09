@@ -1,93 +1,94 @@
-import ScreenCaptureKit
 import AVFoundation
+import CoreAudio
 import Observation
-import CoreMedia
 
 @Observable
-final class SystemAudioCaptureService: NSObject, SCStreamOutput, @unchecked Sendable {
-    private var stream: SCStream?
+final class SystemAudioCaptureService: @unchecked Sendable {
+    private var engine: AVAudioEngine?
     private(set) var isCapturing = false
-    private(set) var permissionGranted = false
     var onAudioBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
 
-    func checkPermission() async {
-        do {
-            // Attempting to get shareable content checks permission
-            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            permissionGranted = true
-        } catch {
-            permissionGranted = false
+    func start(blackHoleDeviceID: AudioDeviceID) throws {
+        let engine = AVAudioEngine()
+        self.engine = engine
+
+        try setInputDevice(blackHoleDeviceID, on: engine)
+
+        let inputNode = engine.inputNode
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
+
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Constants.sampleRate,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw AudioError.formatCreationFailed
         }
-    }
 
-    func start() async throws {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-
-        guard let display = content.displays.first else {
-            throw CaptureError.noDisplay
+        guard let converter = AVAudioConverter(from: nativeFormat, to: targetFormat) else {
+            throw AudioError.converterCreationFailed
         }
 
-        let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, time in
+            guard let self else { return }
+            let frameCount = AVAudioFrameCount(
+                Double(buffer.frameLength) * Constants.sampleRate / nativeFormat.sampleRate
+            )
+            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else { return }
 
-        let config = SCStreamConfiguration()
-        config.capturesAudio = true
-        config.excludesCurrentProcessAudio = true
-        config.sampleRate = Int(Constants.sampleRate)
-        config.channelCount = 1
-        // Disable video capture - we only need audio
-        config.width = 2
-        config.height = 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // 1 FPS minimum
+            nonisolated(unsafe) let sendableBuffer = buffer
+            var error: NSError?
+            converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return sendableBuffer
+            }
 
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global(qos: .userInteractive))
+            if error == nil {
+                self.onAudioBuffer?(convertedBuffer, time)
+            }
+        }
 
-        try await stream.startCapture()
-        self.stream = stream
+        try engine.start()
         isCapturing = true
-        permissionGranted = true
     }
 
-    func stop() async {
-        guard let stream else { return }
-        try? await stream.stopCapture()
-        self.stream = nil
+    func stop() {
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        engine = nil
         isCapturing = false
     }
 
-    // MARK: - SCStreamOutput
-
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio else { return }
-        guard let formatDesc = sampleBuffer.formatDescription,
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else { return }
-
-        var streamDesc = asbd.pointee
-        guard let audioFormat = AVAudioFormat(streamDescription: &streamDesc) else { return }
-
-        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: frameCount) else { return }
-        pcmBuffer.frameLength = frameCount
-
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-        let length = CMBlockBufferGetDataLength(blockBuffer)
-
-        if let channelData = pcmBuffer.floatChannelData {
-            CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: channelData[0])
+    private func setInputDevice(_ deviceID: AudioDeviceID, on engine: AVAudioEngine) throws {
+        var mutableDeviceID = deviceID
+        guard let audioUnit = engine.inputNode.audioUnit else {
+            throw AudioError.audioUnitNotAvailable
         }
 
-        let time = AVAudioTime(sampleTime: 0, atRate: asbd.pointee.mSampleRate)
-        onAudioBuffer?(pcmBuffer, time)
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global, 0,
+            &mutableDeviceID, UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw AudioError.deviceSetFailed(status)
+        }
     }
 
-    enum CaptureError: LocalizedError {
-        case noDisplay
-        case permissionDenied
+    enum AudioError: LocalizedError {
+        case formatCreationFailed
+        case converterCreationFailed
+        case audioUnitNotAvailable
+        case deviceSetFailed(OSStatus)
 
         var errorDescription: String? {
             switch self {
-            case .noDisplay: "Nenhum display encontrado."
-            case .permissionDenied: "Permissao de captura de tela negada. Va em Ajustes do Sistema > Privacidade > Gravacao de Tela."
+            case .formatCreationFailed: "Falha ao criar formato de audio do sistema."
+            case .converterCreationFailed: "Falha ao criar conversor de audio do sistema."
+            case .audioUnitNotAvailable: "Audio unit nao disponivel."
+            case .deviceSetFailed(let s): "Falha ao configurar dispositivo de audio (erro \(s))."
             }
         }
     }
