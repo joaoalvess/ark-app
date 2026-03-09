@@ -1,10 +1,13 @@
 import AVFoundation
+import CoreAudio
 import Observation
 
 @MainActor @Observable
 final class AudioSessionManager {
     let micService = MicrophoneCaptureService()
     let systemService = SystemAudioCaptureService()
+    let driverManager = AudioDriverManager()
+    let aggregateManager = AggregateDeviceManager()
 
     final class AudioBufferStorage: @unchecked Sendable {
         private let lock = NSLock()
@@ -41,6 +44,9 @@ final class AudioSessionManager {
         systemService.onAudioBuffer = { [weak self] buffer, _ in
             self?.handleBuffer(buffer, source: .system)
         }
+
+        // Restore original output if previous session crashed
+        aggregateManager.restoreIfNeeded()
     }
 
     func checkMicPermission() async {
@@ -57,14 +63,21 @@ final class AudioSessionManager {
         }
     }
 
-    func startListening(deviceID: String? = nil) async throws {
+    func startListening(deviceID: String? = nil) throws {
+        guard let blackHoleDeviceID = driverManager.findBlackHoleDeviceID() else {
+            throw AudioSessionError.driverNotInstalled
+        }
+
+        try aggregateManager.createAggregateDevice(blackHoleDeviceID: blackHoleDeviceID)
+        try aggregateManager.activateAsSystemOutput()
         try micService.start(deviceID: deviceID)
-        try await systemService.start()
+        try systemService.start(blackHoleDeviceID: blackHoleDeviceID)
     }
 
-    func stopListening() async {
+    func stopListening() {
         micService.stop()
-        await systemService.stop()
+        systemService.stop()
+        aggregateManager.cleanup()
         storage.withLock { s in
             s.micBuffer.removeAll()
             s.systemBuffer.removeAll()
@@ -101,5 +114,15 @@ final class AudioSessionManager {
 
     private enum AudioSource {
         case mic, system
+    }
+
+    enum AudioSessionError: LocalizedError {
+        case driverNotInstalled
+
+        var errorDescription: String? {
+            switch self {
+            case .driverNotInstalled: "Driver de audio BlackHole nao encontrado. Instale-o nas configuracoes."
+            }
+        }
     }
 }

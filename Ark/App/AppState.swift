@@ -34,13 +34,21 @@ final class AppState {
 
     func setup() async {
         await codexService.checkAvailability()
-        await audioManager.systemService.checkPermission()
+        audioManager.driverManager.checkInstallation()
         await audioManager.checkMicPermission()
+    }
+
+    func installAudioDriver() {
+        audioManager.driverManager.installDriver()
+    }
+
+    func recheckDriver() {
+        audioManager.driverManager.checkInstallation()
     }
 
     func toggleListening() async {
         if isListening {
-            await stopListening()
+            stopListening()
         } else {
             await startListening()
         }
@@ -119,6 +127,11 @@ final class AppState {
     // MARK: - Private
 
     private func startListening() async {
+        guard audioManager.driverManager.status == .installed else {
+            errorMessage = "Driver de audio nao instalado. Instale nas configuracoes."
+            return
+        }
+
         do {
             if !whisperService.isModelLoaded {
                 await whisperService.loadModel(name: settingsStore.settings.whisperModel)
@@ -126,7 +139,7 @@ final class AppState {
 
             resetSuggestionPipeline(clearMessageReference: true)
             audioManager.configure(chunkDuration: settingsStore.settings.chunkDuration)
-            try await audioManager.startListening(deviceID: settingsStore.settings.inputDeviceID)
+            try audioManager.startListening(deviceID: settingsStore.settings.inputDeviceID)
             isListening = true
             isChatVisible = true
         } catch {
@@ -134,8 +147,8 @@ final class AppState {
         }
     }
 
-    private func stopListening() async {
-        await audioManager.stopListening()
+    private func stopListening() {
+        audioManager.stopListening()
         resetSuggestionPipeline(clearMessageReference: true)
         isListening = false
     }
