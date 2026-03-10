@@ -1,6 +1,6 @@
 # 🛡️ Ark
 
-**Your invisible copilot for job interviews.**
+**Your copilot for interviews.**
 
 Ark is a native macOS app that runs discreetly in the menu bar, capturing audio in real time (microphone + system audio), transcribing with Whisper, and using AI to suggest answers during interviews.
 
