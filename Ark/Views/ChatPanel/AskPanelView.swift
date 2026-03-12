@@ -7,6 +7,13 @@ private struct TextHeightKey: PreferenceKey {
     }
 }
 
+private struct AskPanelHeightKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct AskPanelView: View {
     @Bindable var appState: AppState
 
@@ -61,6 +68,15 @@ struct AskPanelView: View {
                 }
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: AskPanelHeightKey.self, value: geo.size.height)
+            }
+        )
+        .onPreferenceChange(AskPanelHeightKey.self) { height in
+            guard abs(appState.askPanelMeasuredHeight - height) > 1 else { return }
+            appState.askPanelMeasuredHeight = height
+        }
     }
 
     private var thinkingView: some View {
@@ -68,7 +84,7 @@ struct AskPanelView: View {
             ForEach(0..<3, id: \.self) { index in
                 ThinkingDot(delay: Double(index) * 0.15)
             }
-            Text("Pensando")
+            Text("Thinking")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
         }

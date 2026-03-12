@@ -5,9 +5,7 @@ struct FloatingBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Pill bar
             HStack(spacing: 8) {
-                // Settings button
                 SettingsLink {
                     ZStack {
                         Circle()
@@ -22,24 +20,30 @@ struct FloatingBarView: View {
 
                 Spacer()
 
-                // Ask/Suggestions button
                 if appState.isListening {
-                    SuggestionsButton(isChatVisible: appState.isChatVisible) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            appState.toggleChat()
+                    SuggestionsButton(isSelected: appState.isVoiceSuggestionsPanelVisible) {
+                        withAnimation(Constants.UI.subtlePanelTransition) {
+                            appState.toggleVoiceSuggestionsPanel()
                         }
                     }
                 } else {
-                    AskButton(isChatVisible: appState.isChatVisible) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            appState.toggleChat()
+                    AskButton(isSelected: appState.isAskPanelVisible) {
+                        withAnimation(Constants.UI.subtlePanelTransition) {
+                            appState.toggleAskPanel()
                         }
                     }
                 }
 
                 Spacer()
 
-                // Mic button
+                if appState.isListening {
+                    TranscriptIconButton(isSelected: appState.isTranscriptOverlayVisible) {
+                        withAnimation(Constants.UI.subtlePanelTransition) {
+                            appState.toggleTranscriptOverlay()
+                        }
+                    }
+                }
+
                 MicButton(isListening: appState.isListening, isLoading: appState.isMicLoading) {
                     Task { await appState.toggleListening() }
                 }
@@ -47,24 +51,45 @@ struct FloatingBarView: View {
             .padding(.horizontal, 8)
             .frame(height: Constants.UI.barHeight)
             .frame(width: appState.isListening ? Constants.UI.barWidthListening : Constants.UI.barWidth)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.isListening)
+            .animation(Constants.UI.subtlePanelTransition, value: appState.isListening)
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
 
-            // Panel
             if appState.isChatVisible {
-                if appState.isListening {
-                    VoicePanelView(appState: appState)
-                        .frame(width: Constants.UI.chatPanelWidth)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
-                } else {
-                    AskPanelView(appState: appState)
-                        .frame(width: Constants.UI.chatPanelWidth)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
+                VStack(spacing: Constants.UI.panelStackSpacing) {
+                    if appState.isAskPanelVisible {
+                        AskPanelView(appState: appState)
+                            .frame(width: Constants.UI.chatPanelWidth)
+                            .transition(.subtlePanelReveal)
+                    }
+
+                    if appState.isVoiceSuggestionsPanelVisible {
+                        VoicePanelView(appState: appState)
+                            .frame(width: Constants.UI.chatPanelWidth)
+                            .transition(.subtlePanelReveal)
+                    }
+
+                    if appState.isTranscriptOverlayVisible {
+                        TranscriptPanelView(appState: appState)
+                            .frame(width: Constants.UI.chatPanelWidth)
+                            .transition(.subtlePanelReveal)
+                    }
                 }
+                .padding(.top, Constants.UI.panelStackSpacing)
             }
         }
+        .animation(Constants.UI.subtlePanelTransition, value: appState.panelMode)
+        .animation(Constants.UI.subtlePanelTransition, value: appState.isTranscriptOverlayVisible)
+    }
+}
+
+private extension AnyTransition {
+    static var subtlePanelReveal: AnyTransition {
+        .opacity.combined(
+            with: .scale(
+                scale: Constants.UI.subtlePanelTransitionScale,
+                anchor: .top
+            )
+        )
     }
 }

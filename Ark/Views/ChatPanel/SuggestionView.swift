@@ -9,7 +9,7 @@ struct SuggestionView: View {
             HStack {
                 Image(systemName: "lightbulb.fill")
                     .foregroundStyle(.yellow)
-                Text("Sugestao de resposta")
+                Text("Suggested answer")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -19,7 +19,7 @@ struct SuggestionView: View {
                 .font(.system(size: 13))
                 .lineLimit(4)
 
-            Button("Usar esta resposta") {
+            Button("Use this answer") {
                 onUse()
             }
             .buttonStyle(.borderedProminent)
