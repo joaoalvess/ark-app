@@ -121,7 +121,7 @@ final class AudioSessionManager {
 
         var errorDescription: String? {
             switch self {
-            case .driverNotInstalled: "Driver de audio BlackHole nao encontrado. Instale-o nas configuracoes."
+            case .driverNotInstalled: "BlackHole audio driver not found. Install it in Settings."
             }
         }
     }

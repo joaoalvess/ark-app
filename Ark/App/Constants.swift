@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 enum Constants {
     static let appName = "Ark"
@@ -20,15 +21,18 @@ enum Constants {
     }
 
     enum Suggestion {
-        static let COMMAND_COOLDOWN_SECONDS: TimeInterval = 3.0
         static let READING_THRESHOLD_SECONDS: TimeInterval = 3.0
         static let READING_CHARS_PER_SECOND: Double = 5.0
         static let HOLD_MINIMUM_SECONDS: TimeInterval = 3.0
-        static let STUCK_SILENCE_CHUNKS_THRESHOLD = 2
+        static let ANALYSIS_CHUNK_DURATION: TimeInterval = 1.0
+        static let TURN_PAUSE_SECONDS: TimeInterval = 0.8
+        static let FOLLOW_UP_LULL_SECONDS: TimeInterval = 1.6
+        static let SIGNAL_REEVALUATION_GRACE_SECONDS: TimeInterval = 0.05
+        static let TRANSCRIPT_WINDOW_SECONDS: TimeInterval = 5 * 60
+        static let ACTIVE_AUDIO_WINDOW_SECONDS: TimeInterval = 3.0
         static let STUCK_MIN_INTERVAL_SECONDS: TimeInterval = 8.0
-        static let STUCK_INCOMPLETE_ENTRIES_THRESHOLD = 3
-        static let FOLLOW_UP_ENTRIES_BETWEEN_FIRES = 4
-        static let DEBOUNCE_NANOSECONDS: UInt64 = 100_000_000
+        static let STUCK_HESITATION_TURNS_THRESHOLD = 2
+        static let MAX_RECENT_TURNS = 24
         static let REVEAL_TICK_NANOSECONDS: UInt64 = 10_000_000
         static let REVEAL_WAIT_NANOSECONDS: UInt64 = 20_000_000
     }
@@ -36,7 +40,7 @@ enum Constants {
     enum UI {
         static let barHeight: CGFloat = 48
         static let barWidth: CGFloat = 220
-        static let barWidthListening: CGFloat = 270
+        static let barWidthListening: CGFloat = 380
         static let chatPanelWidth: CGFloat = 420
         static let chatPanelHeight: CGFloat = 480
         static let cornerRadius: CGFloat = 22
@@ -44,7 +48,13 @@ enum Constants {
         static let inputBarHeight: CGFloat = 52
         static let askPanelMaxHeight: CGFloat = 300
         static let askResponseMaxHeight: CGFloat = 200
-        static let voiceButtonsHeight: CGFloat = 32
         static let voiceResponseMaxHeight: CGFloat = 200
+        static let voiceResponseCompactMaxHeight: CGFloat = 132
+        static let transcriptPanelHeight: CGFloat = 320
+        static let panelStackSpacing: CGFloat = 8
+        static let barControlSpacing: CGFloat = 10
+        static let subtlePanelTransitionDuration: Double = 0.18
+        static let subtlePanelTransitionScale: CGFloat = 0.985
+        static let subtlePanelTransition = Animation.easeOut(duration: subtlePanelTransitionDuration)
     }
 }

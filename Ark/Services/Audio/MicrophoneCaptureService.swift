@@ -104,8 +104,8 @@ final class MicrophoneCaptureService {
 
         var errorDescription: String? {
             switch self {
-            case .formatCreationFailed: "Falha ao criar formato de audio."
-            case .converterCreationFailed: "Falha ao criar conversor de audio."
+            case .formatCreationFailed: "Failed to create the audio format."
+            case .converterCreationFailed: "Failed to create the audio converter."
             }
         }
     }

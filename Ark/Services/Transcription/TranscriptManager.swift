@@ -14,6 +14,15 @@ final class TranscriptManager {
         return recent.map(\.formatted).joined(separator: "\n")
     }
 
+    func formattedTranscript(within interval: TimeInterval) -> String {
+        entries(within: interval).map(\.formatted).joined(separator: "\n")
+    }
+
+    func entries(within interval: TimeInterval) -> [TranscriptEntry] {
+        let cutoff = Date().addingTimeInterval(-interval)
+        return entries.filter { $0.timestamp >= cutoff }
+    }
+
     var lastInterviewerEntry: TranscriptEntry? {
         entries.last { $0.speaker == .interviewer }
     }
@@ -23,8 +32,12 @@ final class TranscriptManager {
     }
 
     @discardableResult
-    func addEntry(speaker: TranscriptEntry.Speaker, text: String) -> TranscriptEntry {
-        let entry = TranscriptEntry(speaker: speaker, text: text, timestamp: Date())
+    func addEntry(
+        speaker: TranscriptEntry.Speaker,
+        text: String,
+        timestamp: Date = Date()
+    ) -> TranscriptEntry {
+        let entry = TranscriptEntry(speaker: speaker, text: text, timestamp: timestamp)
         entries.append(entry)
         trimOldEntries()
         return entry

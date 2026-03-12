@@ -176,11 +176,11 @@ final class AggregateDeviceManager: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .blackHoleUIDNotFound: "UID do dispositivo BlackHole nao encontrado."
-            case .creationFailed(let s): "Falha ao criar dispositivo agregado (erro \(s))."
-            case .noAggregateDevice: "Dispositivo agregado nao existe."
-            case .defaultOutputNotFound: "Dispositivo de saida padrao nao encontrado."
-            case .setOutputFailed(let s): "Falha ao definir saida de audio (erro \(s))."
+            case .blackHoleUIDNotFound: "BlackHole device UID not found."
+            case .creationFailed(let s): "Failed to create the aggregate device (error \(s))."
+            case .noAggregateDevice: "Aggregate device does not exist."
+            case .defaultOutputNotFound: "Default output device not found."
+            case .setOutputFailed(let s): "Failed to set the audio output (error \(s))."
             }
         }
     }

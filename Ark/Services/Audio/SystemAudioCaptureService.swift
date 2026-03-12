@@ -85,10 +85,10 @@ final class SystemAudioCaptureService: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .formatCreationFailed: "Falha ao criar formato de audio do sistema."
-            case .converterCreationFailed: "Falha ao criar conversor de audio do sistema."
-            case .audioUnitNotAvailable: "Audio unit nao disponivel."
-            case .deviceSetFailed(let s): "Falha ao configurar dispositivo de audio (erro \(s))."
+            case .formatCreationFailed: "Failed to create the system audio format."
+            case .converterCreationFailed: "Failed to create the system audio converter."
+            case .audioUnitNotAvailable: "Audio unit is not available."
+            case .deviceSetFailed(let s): "Failed to configure the audio device (error \(s))."
             }
         }
     }

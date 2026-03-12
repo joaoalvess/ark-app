@@ -22,9 +22,9 @@ final class AudioDriverManager {
 
         var errorDescription: String? {
             switch self {
-            case .packageNotFound: "Pacote do driver de audio nao encontrado nos recursos do app."
-            case .installationFailed: "Falha ao instalar o driver de audio."
-            case .deviceNotFound: "Dispositivo BlackHole nao encontrado. Reinicie o computador apos a instalacao."
+            case .packageNotFound: "Audio driver package not found in the app resources."
+            case .installationFailed: "Failed to install the audio driver."
+            case .deviceNotFound: "BlackHole device not found. Restart your computer after installation."
             }
         }
     }
