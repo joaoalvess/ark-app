@@ -191,10 +191,10 @@ final class InterviewAssistantEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .idle)
     }
 
-    func testTranscriptionCoordinatorSerializesConcurrentJobs() async {
+    func testTranscriptionCoordinatorProcessesSourcesIndependently() async {
         let probe = TranscriptionProbe()
-        let coordinator = TranscriptionCoordinator { job in
-            let label = "\(job.source.rawValue)-\(Int(job.samples.first ?? 0))"
+        let coordinator = TranscriptionCoordinator(windowDuration: 3, strideDuration: 1) { job in
+            let label = "\(job.source.rawValue)-\(Int(job.samples.first ?? 0))-\(job.sequence)"
             await probe.begin(label)
             try? await Task.sleep(nanoseconds: 30_000_000)
             await probe.end(label)
@@ -205,23 +205,29 @@ final class InterviewAssistantEngineTests: XCTestCase {
             await collectOutputs(from: coordinator, count: 2)
         }
 
-        await coordinator.submit(makeJob(source: .mic, marker: 1))
-        await coordinator.submit(makeJob(source: .system, marker: 2))
+        await coordinator.submit(makeChunk(source: .mic, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 1)))
+        await coordinator.submit(makeChunk(source: .mic, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 2)))
+        await coordinator.submit(makeChunk(source: .mic, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 3)))
+
+        await coordinator.submit(makeChunk(source: .system, marker: 2, timestamp: Date(timeIntervalSinceReferenceDate: 1)))
+        await coordinator.submit(makeChunk(source: .system, marker: 2, timestamp: Date(timeIntervalSinceReferenceDate: 2)))
+        await coordinator.submit(makeChunk(source: .system, marker: 2, timestamp: Date(timeIntervalSinceReferenceDate: 3)))
 
         let results = await outputsTask.value
         let snapshot = await probe.snapshot()
 
-        XCTAssertEqual(snapshot.maxRunning, 1)
-        XCTAssertEqual(results.map(\.source), [.mic, .system])
-        XCTAssertEqual(results.compactMap(\.text), ["mic-1", "system-2"])
+        XCTAssertEqual(Set(results.map(\.source)), Set([.mic, .system]))
+        XCTAssertTrue(snapshot.maxRunning >= 2)
+        XCTAssertTrue(results.compactMap(\.text).contains("mic-1-0"))
+        XCTAssertTrue(results.compactMap(\.text).contains("system-2-0"))
     }
 
-    func testTranscriptionCoordinatorReplacesPendingJobForSameSource() async throws {
+    func testTranscriptionCoordinatorKeepsDisjointFlushWindows() async throws {
         let probe = TranscriptionProbe()
-        let coordinator = TranscriptionCoordinator { job in
-            let label = "\(job.source.rawValue)-\(Int(job.samples.first ?? 0))"
+        let coordinator = TranscriptionCoordinator(windowDuration: 3, strideDuration: 1) { job in
+            let label = "\(job.source.rawValue)-\(Int(job.samples.first ?? 0))-\(job.sequence)"
             await probe.begin(label)
-            if label == "system-1" {
+            if label == "system-1-0" {
                 await probe.pause(label)
             }
             await probe.end(label)
@@ -232,22 +238,87 @@ final class InterviewAssistantEngineTests: XCTestCase {
             await collectOutputs(from: coordinator, count: 2)
         }
 
-        await coordinator.submit(makeJob(source: .system, marker: 1))
+        await coordinator.submit(makeChunk(source: .system, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 1)))
+        await coordinator.submit(makeChunk(source: .system, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 2)))
+        await coordinator.flush(
+            source: .system,
+            sessionID: testSessionID,
+            timestamp: Date(timeIntervalSinceReferenceDate: 2.1),
+            reason: .silence
+        )
         try await waitUntilAsync(timeout: 1) {
-            await probe.isWaiting("system-1")
+            await probe.isWaiting("system-1-0")
         }
 
-        await coordinator.submit(makeJob(source: .mic, marker: 2))
-        await coordinator.submit(makeJob(source: .mic, marker: 3))
-        await probe.release("system-1")
+        await coordinator.submit(makeChunk(source: .system, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 4)))
+        await coordinator.submit(makeChunk(source: .system, marker: 1, timestamp: Date(timeIntervalSinceReferenceDate: 5)))
+        await coordinator.flush(
+            source: .system,
+            sessionID: testSessionID,
+            timestamp: Date(timeIntervalSinceReferenceDate: 5.1),
+            reason: .silence
+        )
+        await probe.release("system-1-0")
 
         let results = await outputsTask.value
-        let processedLabels = await probe.processedLabels()
-        let droppedJobs = await coordinator.droppedPendingJobs
+        let diagnostics = await coordinator.diagnostics(for: .system)
 
-        XCTAssertEqual(results.compactMap(\.text), ["system-1", "mic-3"])
-        XCTAssertFalse(processedLabels.contains("mic-2"))
-        XCTAssertEqual(droppedJobs, 1)
+        XCTAssertEqual(results.compactMap(\.text), ["system-1-0", "system-1-1"])
+        XCTAssertEqual(diagnostics.discardedWindowCount, 0)
+    }
+
+    func testTranscriptManagerMergesOverlappingLiveEntriesWithoutDuplication() {
+        let manager = TranscriptManager()
+        let base = Date()
+        let entry = manager.upsertLiveEntry(
+            id: nil,
+            speaker: .me,
+            text: "Eu começaria falando sobre arquitetura",
+            timestamp: base
+        )
+        let updated = manager.upsertLiveEntry(
+            id: entry.id,
+            speaker: .me,
+            text: "falando sobre arquitetura distribuída e filas",
+            timestamp: base.addingTimeInterval(1)
+        )
+
+        XCTAssertEqual(manager.entries.count, 1)
+        XCTAssertEqual(updated.text, "Eu começaria falando sobre arquitetura distribuída e filas")
+    }
+
+    func testPendingSignalsIgnoreExpiredEntries() {
+        var pendingSignals = PendingSignals()
+        let oldTimestamp = Date().addingTimeInterval(-Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS - 1)
+        let freshTimestamp = Date()
+
+        pendingSignals.store(
+            SuggestionSignal(
+                kind: .followUp,
+                priority: .followUp,
+                transcript: "old",
+                focusText: "old",
+                source: "old",
+                timestamp: oldTimestamp
+            )
+        )
+        pendingSignals.store(
+            SuggestionSignal(
+                kind: .question,
+                priority: .interviewerQuestion,
+                transcript: "fresh",
+                focusText: "fresh",
+                source: "fresh",
+                timestamp: freshTimestamp
+            )
+        )
+
+        pendingSignals.removeExpiredSignals(olderThan: Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS)
+
+        XCTAssertEqual(
+            pendingSignals.bestAvailable(maxAge: Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS)?.kind,
+            .question
+        )
     }
 
     func testTranscriptOverlayKeepsVoiceSuggestionsActive() {
@@ -299,17 +370,23 @@ final class InterviewAssistantEngineTests: XCTestCase {
         XCTAssertEqual(TranscriptEntry(speaker: .me, text: "teste", timestamp: Date()).formatted, "[Eu]: teste")
     }
 
-    private func makeJob(
+    private var testSessionID: UUID {
+        UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    }
+
+    private func makeChunk(
         source: TranscriptionSource,
         marker: Float,
+        seconds: TimeInterval = 1,
         timestamp: Date = Date(),
-        sessionID: UUID = UUID()
-    ) -> TranscriptionJob {
-        TranscriptionJob(
+        sessionID: UUID? = nil
+    ) -> TranscriptionChunk {
+        let sampleCount = max(1, Int(Constants.sampleRate * seconds))
+        return TranscriptionChunk(
             source: source,
-            samples: [marker],
+            samples: Array(repeating: marker, count: sampleCount),
             timestamp: timestamp,
-            sessionID: sessionID
+            sessionID: sessionID ?? testSessionID
         )
     }
 
