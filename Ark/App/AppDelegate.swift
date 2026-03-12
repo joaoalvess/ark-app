@@ -17,8 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         observePanelMode()
-        observeAskResize()
-        observeVoiceResize()
+        observeMeasuredPanelHeights()
 
         // Register global shortcut: Cmd+Enter to toggle listening
         NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -42,8 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func observePanelMode() {
         withObservationTracking {
-            _ = appState.isChatVisible
+            _ = appState.panelMode
             _ = appState.isListening
+            _ = appState.isTranscriptOverlayVisible
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -54,78 +54,111 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updatePanelMode() {
-        if appState.isChatVisible {
-            if appState.isListening {
-                let responseHeight = computeVoiceResponseHeight()
-                lastPanelHeight = responseHeight
-                panelController.showVoice(responseHeight: responseHeight)
-            } else {
-                let responseHeight = computeAskResponseHeight()
-                lastPanelHeight = responseHeight
-                panelController.showAsk(responseHeight: responseHeight)
-            }
-        } else {
+        let contentHeight = computeVisibleContentHeight()
+        guard contentHeight > 0 else {
             lastPanelHeight = 0
             let barWidth = appState.isListening ? Constants.UI.barWidthListening : Constants.UI.barWidth
             panelController.hideChat(barWidth: barWidth)
+            return
         }
+
+        lastPanelHeight = contentHeight
+        panelController.showContent(
+            width: Constants.UI.chatPanelWidth,
+            contentHeight: contentHeight
+        )
     }
 
-    // MARK: - Ask panel dynamic resize (during streaming)
+    // MARK: - Measured panel resize
 
-    private func observeAskResize() {
+    private func observeMeasuredPanelHeights() {
         withObservationTracking {
-            _ = appState.askContentHeight
+            _ = appState.askPanelMeasuredHeight
+            _ = appState.voicePanelMeasuredHeight
+            _ = appState.transcriptPanelMeasuredHeight
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
 
-                if self.appState.isChatVisible && !self.appState.isListening {
-                    let responseHeight = self.computeAskResponseHeight()
-                    // Only resize if height changed meaningfully
-                    if abs(responseHeight - self.lastPanelHeight) > 4 {
-                        self.lastPanelHeight = responseHeight
-                        self.panelController.showAsk(responseHeight: responseHeight)
+                if self.appState.isChatVisible {
+                    let contentHeight = self.computeVisibleContentHeight()
+                    if abs(contentHeight - self.lastPanelHeight) > 1 {
+                        self.lastPanelHeight = contentHeight
+                        self.panelController.showContent(
+                            width: Constants.UI.chatPanelWidth,
+                            contentHeight: contentHeight
+                        )
                     }
                 }
 
-                self.observeAskResize()
+                self.observeMeasuredPanelHeights()
             }
         }
     }
 
-    // MARK: - Voice panel dynamic resize (during streaming)
+    private func computeVisibleContentHeight() -> CGFloat {
+        var sections: [CGFloat] = []
 
-    private func observeVoiceResize() {
-        withObservationTracking {
-            _ = appState.suggestionEngine.contentHeight
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-
-                if self.appState.isChatVisible && self.appState.isListening {
-                    let responseHeight = self.computeVoiceResponseHeight()
-                    if abs(responseHeight - self.lastPanelHeight) > 4 {
-                        self.lastPanelHeight = responseHeight
-                        self.panelController.showVoice(responseHeight: responseHeight)
-                    }
-                }
-
-                self.observeVoiceResize()
-            }
+        switch appState.panelMode {
+        case .hidden:
+            break
+        case .ask:
+            sections.append(resolvedAskPanelHeight())
+        case .voiceSuggestions:
+            sections.append(resolvedVoicePanelHeight())
         }
+
+        if appState.isTranscriptOverlayVisible {
+            sections.append(resolvedTranscriptPanelHeight())
+        }
+
+        guard !sections.isEmpty else { return 0 }
+
+        let panelsHeight = sections.reduce(0, +)
+        let spacingHeight = Constants.UI.panelStackSpacing * CGFloat(sections.count - 1)
+        return panelsHeight + spacingHeight
     }
 
-    private func computeVoiceResponseHeight() -> CGFloat {
+    private func resolvedAskPanelHeight() -> CGFloat {
+        max(appState.askPanelMeasuredHeight, estimatedAskPanelHeight())
+    }
+
+    private func resolvedVoicePanelHeight() -> CGFloat {
+        max(appState.voicePanelMeasuredHeight, estimatedVoicePanelHeight())
+    }
+
+    private func resolvedTranscriptPanelHeight() -> CGFloat {
+        max(appState.transcriptPanelMeasuredHeight, estimatedTranscriptPanelHeight())
+    }
+
+    private func estimatedAskPanelHeight() -> CGFloat {
+        let responseHeight = computeAskResponseHeight(maxHeight: Constants.UI.askResponseMaxHeight)
+        return Constants.UI.inputBarHeight + responseHeight + (responseHeight > 0 ? 1 : 0)
+    }
+
+    private func estimatedVoicePanelHeight() -> CGFloat {
+        let isCompact = appState.isTranscriptOverlayVisible
+        let responseHeight = computeVoiceResponseHeight(
+            maxHeight: isCompact ? Constants.UI.voiceResponseCompactMaxHeight : Constants.UI.voiceResponseMaxHeight
+        )
+        let headerHeight: CGFloat = isCompact ? 42 : 46
+        return headerHeight + responseHeight + (responseHeight > 0 ? 1 : 0)
+    }
+
+    private func estimatedTranscriptPanelHeight() -> CGFloat {
+        Constants.UI.transcriptPanelHeight + 120
+    }
+
+    private func computeVoiceResponseHeight(maxHeight: CGFloat) -> CGFloat {
         let engine = appState.suggestionEngine
         let hasResponse = engine.isStreaming || !engine.displayedText.isEmpty
         guard hasResponse else { return 0 }
-        return min(engine.contentHeight, Constants.UI.voiceResponseMaxHeight)
+        return min(engine.contentHeight, maxHeight)
     }
 
-    private func computeAskResponseHeight() -> CGFloat {
+    private func computeAskResponseHeight(maxHeight: CGFloat) -> CGFloat {
         let hasResponse = appState.isAskStreaming || !appState.askDisplayedText.isEmpty
         guard hasResponse else { return 0 }
-        return min(appState.askContentHeight, Constants.UI.askResponseMaxHeight)
+        return min(appState.askContentHeight, maxHeight)
     }
 }
