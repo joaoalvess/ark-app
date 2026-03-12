@@ -40,7 +40,7 @@ enum Constants {
     enum UI {
         static let barHeight: CGFloat = 48
         static let barWidth: CGFloat = 220
-        static let barWidthListening: CGFloat = 380
+        static let barWidthListening: CGFloat = 320
         static let chatPanelWidth: CGFloat = 420
         static let chatPanelHeight: CGFloat = 480
         static let cornerRadius: CGFloat = 22

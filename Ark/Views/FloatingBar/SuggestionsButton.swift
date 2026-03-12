@@ -9,7 +9,7 @@ struct SuggestionsButton: View {
             isSelected: isSelected,
             inactiveIcon: "sparkles",
             inactiveTitle: "Suggestions",
-            minWidth: 140,
+            minWidth: 122,
             action: action
         )
     }
