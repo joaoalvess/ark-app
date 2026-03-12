@@ -6,7 +6,7 @@ enum Constants {
     static let whisperModel = "large-v3"
     static let whisperLanguage = "pt"
     static let transcriptMaxDuration: TimeInterval = 30 * 60 // 30 minutes
-    static let chunkDuration: TimeInterval = 5 // seconds
+    static let chunkDuration: TimeInterval = 3 // seconds
     static let sampleRate: Double = 16_000
     static let codexTimeoutSeconds: TimeInterval = 300
 
@@ -25,9 +25,12 @@ enum Constants {
         static let READING_CHARS_PER_SECOND: Double = 5.0
         static let HOLD_MINIMUM_SECONDS: TimeInterval = 3.0
         static let ANALYSIS_CHUNK_DURATION: TimeInterval = 1.0
+        static let TRANSCRIPTION_WINDOW_MIN_SECONDS: TimeInterval = 2.0
+        static let TRANSCRIPTION_WINDOW_MAX_SECONDS: TimeInterval = 6.0
         static let TURN_PAUSE_SECONDS: TimeInterval = 0.8
         static let FOLLOW_UP_LULL_SECONDS: TimeInterval = 1.6
         static let SIGNAL_REEVALUATION_GRACE_SECONDS: TimeInterval = 0.05
+        static let SIGNAL_MAX_AGE_SECONDS: TimeInterval = 4.0
         static let TRANSCRIPT_WINDOW_SECONDS: TimeInterval = 5 * 60
         static let ACTIVE_AUDIO_WINDOW_SECONDS: TimeInterval = 3.0
         static let STUCK_MIN_INTERVAL_SECONDS: TimeInterval = 8.0

@@ -26,7 +26,11 @@ struct AppSettings: Codable {
         whisperModel = try container.decodeIfPresent(String.self, forKey: .whisperModel) ?? Constants.whisperModel
         inputDeviceID = try container.decodeIfPresent(String.self, forKey: .inputDeviceID)
         autoSuggest = try container.decodeIfPresent(Bool.self, forKey: .autoSuggest) ?? true
-        chunkDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .chunkDuration) ?? Constants.chunkDuration
+        let storedWindow = try container.decodeIfPresent(TimeInterval.self, forKey: .chunkDuration) ?? Constants.chunkDuration
+        chunkDuration = min(
+            max(storedWindow, Constants.Suggestion.TRANSCRIPTION_WINDOW_MIN_SECONDS),
+            Constants.Suggestion.TRANSCRIPTION_WINDOW_MAX_SECONDS
+        )
         aiModel = try container.decodeIfPresent(String.self, forKey: .aiModel) ?? "gpt-5.4"
         aiReasoningLevel = try container.decodeIfPresent(String.self, forKey: .aiReasoningLevel) ?? "high"
         assistantProfile = try container.decodeIfPresent(AssistantProfile.self, forKey: .assistantProfile) ?? .techInterview
