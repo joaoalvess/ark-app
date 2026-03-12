@@ -1,5 +1,12 @@
 import Foundation
 
+enum VoiceAction: String, CaseIterable {
+    case assist
+    case whatToSay
+    case followUp
+    case recap
+}
+
 enum PromptBuilder {
     static func systemPrompt(for profile: AssistantProfile) -> String {
         switch profile {
@@ -116,34 +123,166 @@ enum PromptBuilder {
         """
     }
 
-    static func buildInterviewSuggestionPrompt(context: InterviewTurnContext) -> String {
-        let modeInstruction: String
-        switch context.mode {
-        case .answerQuestion:
-            modeInstruction = "Responda a última pergunta do entrevistador como se fosse o candidato falando agora."
-        case .continueCandidate:
-            modeInstruction = "Continue a resposta do candidato a partir do ponto em que ele parou, mantendo a mesma linha de raciocínio."
+    static func buildFollowUpSuggestionPrompt(profile: AssistantProfile, transcript: String) -> String {
+        let instruction: String
+        switch profile {
+        case .generalist:
+            instruction = """
+            Com base no fluxo da conversa, sugira um ponto relevante, \
+            insight ou continuação que o usuário poderia trazer agora. \
+            Deve soar natural e acrescentar valor à discussão. Máximo 2-3 frases.
+            """
+        case .code:
+            instruction = """
+            Com base na discussão técnica, sugira um ponto técnico relevante, \
+            uma consideração de design ou uma observação que o desenvolvedor poderia trazer agora. \
+            Inclua snippets curtos se apropriado. Máximo 2-3 frases.
+            """
+        case .techInterview:
+            instruction = """
+            Com base no contexto da entrevista, sugira algo relevante que o candidato \
+            poderia acrescentar à conversa agora — um insight, exemplo ou ponto complementar. \
+            Máximo 2 frases curtas e naturais.
+            """
         }
 
         return """
-        ## Última fala do entrevistador
-        \(context.interviewerPrompt)
+        ## Transcrição
+        \(transcript)
 
-        ## Resposta atual do candidato
-        \(context.candidateResponse.isEmpty ? "(O candidato ainda não respondeu)" : context.candidateResponse)
-
-        ## Último trecho do candidato
-        \(context.latestCandidateSegment ?? "(Sem trecho parcial)")
-
-        ## Instrução
-        \(modeInstruction)
-
-        Regras de saída:
-        - Retorne somente a resposta final
-        - Máximo 2 frases curtas
-        - Soe natural, direta e falável
-        - Não use bullets, títulos, markdown, aspas ou explicações extras
-        - Se estiver continuando a fala do candidato, encaixe a continuação sem repetir toda a resposta desde o começo
+        \(instruction)
         """
     }
+
+    static func buildStuckContinuationPrompt(profile: AssistantProfile, transcript: String) -> String {
+        let instruction: String
+        switch profile {
+        case .generalist:
+            instruction = """
+            O usuário parou no meio de uma fala. Continue o raciocínio dele de forma natural, \
+            como se estivesse concluindo o pensamento. Comece com '...' para indicar continuação. Máximo 2 frases.
+            """
+        case .code:
+            instruction = """
+            O desenvolvedor travou no meio de uma explicação técnica. Continue o raciocínio dele, \
+            concluindo o ponto técnico. Comece com '...' Máximo 2 frases.
+            """
+        case .techInterview:
+            instruction = """
+            O candidato travou no meio da resposta. Continue o raciocínio dele de forma natural, \
+            como se estivesse concluindo a frase dele. Comece com '...' Máximo 2 frases curtas e prontas para falar. \
+            Não reinicie a resposta.
+            """
+        }
+
+        return """
+        ## Transcrição
+        \(transcript)
+
+        \(instruction)
+        """
+    }
+
+    // MARK: - Voice Mode
+
+    static func buildVoiceActionPrompt(action: VoiceAction, profile: AssistantProfile, transcript: String, history: [(action: String, answer: String)] = []) -> String {
+        let instruction: String
+
+        switch (action, profile) {
+        // .assist
+        case (.assist, .techInterview):
+            instruction = "Analise a última pergunta ou tema da entrevista e dê ao candidato a melhor estratégia de resposta. Diga o que enfatizar e o que evitar. 2-3 frases diretas, sem formatação."
+        case (.assist, .code):
+            instruction = "Analise o ponto técnico em discussão e dê orientação prática ao desenvolvedor. Aponte o que é mais relevante ou o que pode estar faltando. 2-3 frases diretas."
+        case (.assist, .generalist):
+            instruction = "Analise o contexto da conversa e dê orientação prática ao usuário. Foque no que é mais relevante para o momento. 2-3 frases diretas."
+
+        // .whatToSay
+        case (.whatToSay, .techInterview):
+            instruction = "O candidato precisa de ajuda para continuar ou completar sua resposta ao entrevistador. Continue o raciocínio dele de forma natural, como se estivesse concluindo o pensamento. Comece com '...' para indicar continuação. 2-3 frases prontas para falar, naturais e confiantes. Sem bullets, sem markdown, sem explicações — apenas a continuação da fala."
+        case (.whatToSay, .code):
+            instruction = "O desenvolvedor precisa de ajuda para continuar ou completar sua fala. Continue o raciocínio dele de forma natural, concluindo o ponto técnico. Comece com '...' para indicar continuação. 2-3 frases prontas para falar."
+        case (.whatToSay, .generalist):
+            instruction = "O usuário precisa de ajuda para continuar ou completar sua fala. Continue o raciocínio dele de forma natural, como se estivesse concluindo o pensamento. Comece com '...' para indicar continuação. 2-3 frases prontas para falar."
+
+        // .followUp
+        case (.followUp, .techInterview):
+            instruction = "Sugira uma pergunta ou comentário inteligente que o candidato pode fazer agora para demonstrar interesse e profundidade técnica. 1-2 frases naturais, prontas para falar."
+        case (.followUp, .code):
+            instruction = "Sugira uma pergunta técnica ou consideração de design relevante que o desenvolvedor pode trazer agora. 1-2 frases diretas."
+        case (.followUp, .generalist):
+            instruction = "Sugira uma pergunta ou comentário relevante que o usuário pode fazer agora para avançar a conversa. 1-2 frases naturais."
+
+        // .recap
+        case (.recap, .techInterview):
+            instruction = "Resuma os pontos principais discutidos na entrevista até agora: perguntas feitas, temas abordados e como o candidato se saiu. 2-3 frases diretas."
+        case (.recap, .code):
+            instruction = "Resuma os pontos técnicos discutidos até agora: decisões tomadas, problemas identificados e próximos passos. 2-3 frases diretas."
+        case (.recap, .generalist):
+            instruction = "Resuma os pontos principais da conversa até agora. 2-3 frases diretas."
+        }
+
+        var parts: [String] = []
+
+        parts.append("""
+        ## Transcrição
+        \(transcript.isEmpty ? "(Nenhuma transcrição ainda)" : transcript)
+        """)
+
+        if !history.isEmpty {
+            let historyText = history.map { "Ação: \($0.action)\nResposta: \($0.answer)" }.joined(separator: "\n\n")
+            parts.append("""
+            ## Histórico desta sessão
+            \(historyText)
+            """)
+        }
+
+        parts.append(instruction)
+
+        return parts.joined(separator: "\n\n")
+    }
+
+    // MARK: - Ask Mode
+
+    static func askSystemPrompt() -> String {
+        """
+        Você é um assistente de respostas ultra-curtas.
+        Regras obrigatórias:
+        - Responda em pt-BR
+        - Máximo 2-3 frases curtas
+        - Vá direto ao ponto, sem introduções nem exemplos
+        - Nunca use código, listas, headers ou markdown elaborado
+        - Nunca inclua URLs ou links
+        - Se a pergunta for simples, a resposta deve ser uma frase só
+        """
+    }
+
+    static func buildAskPrompt(transcript: String, question: String, history: [(question: String, answer: String)] = []) -> String {
+        var parts: [String] = []
+
+        if !transcript.isEmpty {
+            parts.append("""
+            ## Contexto da Conversa
+            \(transcript)
+            """)
+        }
+
+        if !history.isEmpty {
+            let historyText = history.map { "Pergunta: \($0.question)\nResposta: \($0.answer)" }.joined(separator: "\n\n")
+            parts.append("""
+            ## Histórico desta sessão
+            \(historyText)
+            """)
+        }
+
+        parts.append("""
+        ## Pergunta
+        \(question)
+
+        Responda em no máximo 2-3 frases. Seja direto, sem exemplos.
+        """)
+
+        return parts.joined(separator: "\n\n")
+    }
+
 }
