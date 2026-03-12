@@ -52,7 +52,6 @@ enum Constants {
         static let voiceResponseCompactMaxHeight: CGFloat = 132
         static let transcriptPanelHeight: CGFloat = 320
         static let panelStackSpacing: CGFloat = 8
-        static let barControlSpacing: CGFloat = 10
         static let subtlePanelTransitionDuration: Double = 0.18
         static let subtlePanelTransitionScale: CGFloat = 0.985
         static let subtlePanelTransition = Animation.easeOut(duration: subtlePanelTransitionDuration)
