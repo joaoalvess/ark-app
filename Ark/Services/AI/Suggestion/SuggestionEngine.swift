@@ -2,53 +2,147 @@ import Foundation
 import Observation
 import SwiftUI
 
+enum SuggestionCoordinatorState: Equatable {
+    case idle
+    case generatingAuto
+    case generatingManual
+    case holdingVisibleSuggestion(isManual: Bool)
+}
+
+struct SuggestionTimings: Sendable {
+    var holdMinimumSeconds: TimeInterval = Constants.Suggestion.HOLD_MINIMUM_SECONDS
+    var readingThresholdSeconds: TimeInterval = Constants.Suggestion.READING_THRESHOLD_SECONDS
+    var readingCharsPerSecond: Double = Constants.Suggestion.READING_CHARS_PER_SECOND
+    var turnPauseSeconds: TimeInterval = Constants.Suggestion.TURN_PAUSE_SECONDS
+    var reevaluationGraceSeconds: TimeInterval = Constants.Suggestion.SIGNAL_REEVALUATION_GRACE_SECONDS
+}
+
+private struct PartialTurn {
+    let speaker: TranscriptEntry.Speaker
+    let startedAt: Date
+    var updatedAt: Date
+    var text: String
+
+    mutating func append(fragment: String, timestamp: Date) {
+        text = merge(existing: text, incoming: fragment)
+        updatedAt = timestamp
+    }
+
+    private func merge(existing: String, incoming: String) -> String {
+        let trimmedIncoming = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIncoming.isEmpty else { return existing }
+        guard !existing.isEmpty else { return trimmedIncoming }
+
+        if trimmedIncoming.hasPrefix(existing) {
+            return trimmedIncoming
+        }
+
+        if existing.hasSuffix(trimmedIncoming) {
+            return existing
+        }
+
+        let existingWords = existing.split(separator: " ").map(String.init)
+        let incomingWords = trimmedIncoming.split(separator: " ").map(String.init)
+        let maxOverlap = min(existingWords.count, incomingWords.count)
+
+        if maxOverlap > 0 {
+            for overlap in stride(from: maxOverlap, through: 1, by: -1) {
+                let existingSuffix = existingWords.suffix(overlap)
+                let incomingPrefix = incomingWords.prefix(overlap)
+                if Array(existingSuffix) == Array(incomingPrefix) {
+                    return (existingWords + incomingWords.dropFirst(overlap)).joined(separator: " ")
+                }
+            }
+        }
+
+        return "\(existing) \(trimmedIncoming)"
+    }
+}
+
 @MainActor @Observable
 final class SuggestionEngine {
-    // MARK: - Output (observed by UI)
+    // MARK: - Output
     var displayedText = ""
     var isStreaming = false
     var contentHeight: CGFloat = 0
+    private(set) var state: SuggestionCoordinatorState = .idle
 
     // MARK: - Dependencies
-    private let codexService: CodexCLIService
+    private let codexService: any SuggestionCodexClient
     private let settingsStore: SettingsStore
+    private let timings: SuggestionTimings
 
     // MARK: - Internal state
     private var observers: [TranscriptObserver] = []
     private var activeTask: Task<Void, Never>?
-    private var buffer = ""
     private var revealTask: Task<Void, Never>?
-    private var activeRequestPriority: SuggestionPriority?
-    private var lastCompletedPriority: SuggestionPriority?
+    private var reevaluationTask: Task<Void, Never>?
+    private var buffer = ""
+    private var activeRequest: SuggestionRequestContext?
+    private var activeGenerationID: UUID?
+    private var pendingSignals = PendingSignals()
+    private var partialTurns: [TranscriptEntry.Speaker: PartialTurn] = [:]
+    private var recentTurns: [ConversationTurn] = []
     private var lastSuggestionDisplayedAt: Date?
-    private var commandCooldownUntil: Date?
     private var holdUntil: Date?
     private var lastCompletedSuggestionText: String?
-    private var userCommandLock = false
+    private var lastUserOwnSpeechAt: Date?
     private var sessionHistory: [(action: String, answer: String)] = []
+    private var automaticSuggestionsEnabled = true
 
-    init(codexService: CodexCLIService, settingsStore: SettingsStore) {
+    init(
+        codexService: any SuggestionCodexClient,
+        settingsStore: SettingsStore,
+        timings: SuggestionTimings = SuggestionTimings()
+    ) {
         self.codexService = codexService
         self.settingsStore = settingsStore
+        self.timings = timings
     }
 
     // MARK: - Observer registration
 
     func register(_ observer: TranscriptObserver) {
-        observer.onRequest = { [weak self] request in
+        observer.onSignal = { [weak self] signal in
             Task { @MainActor [weak self] in
-                self?.handleRequest(request)
+                self?.store(signal: signal)
             }
         }
         observers.append(observer)
     }
 
-    // MARK: - Echo detection
+    // MARK: - Public helpers
+
+    var isUserCommandActive: Bool {
+        state == .generatingManual || state == .holdingVisibleSuggestion(isManual: true)
+    }
+
+    var areAutomaticSuggestionsEnabled: Bool {
+        automaticSuggestionsEnabled
+    }
+
+    var recentTurnsTranscript: String {
+        recentTurns
+            .suffix(Constants.Suggestion.MAX_RECENT_TURNS)
+            .map(\.formatted)
+            .joined(separator: "\n")
+    }
+
+    func setAutomaticSuggestionsEnabled(_ isEnabled: Bool) {
+        automaticSuggestionsEnabled = isEnabled
+        if !isEnabled {
+            pendingSignals.clear()
+            clearDisplay()
+        } else {
+            evaluatePendingSignals()
+        }
+    }
 
     func isEchoingSuggestion(_ text: String) -> Bool {
         guard let lastSuggestion = lastCompletedSuggestionText, !lastSuggestion.isEmpty else {
             return false
         }
+
         let textTokens = tokenize(text)
         let suggestionTokens = tokenize(lastSuggestion)
         guard !textTokens.isEmpty, !suggestionTokens.isEmpty else { return false }
@@ -61,159 +155,155 @@ final class SuggestionEngine {
         return similarity >= 0.4
     }
 
-    var isUserCommandActive: Bool {
-        userCommandLock || activeRequestPriority == .userCommand
-    }
+    func ingestSpeechFragment(
+        speaker: TranscriptEntry.Speaker,
+        text: String?,
+        timestamp: Date
+    ) {
+        finalizeExpiredTurns(now: timestamp, excluding: text == nil ? nil : speaker)
 
-    private func tokenize(_ text: String) -> [String] {
-        let folded = text.lowercased().folding(options: .diacriticInsensitive, locale: .current)
-        return folded.components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count > 1 }
-    }
+        if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if speaker == .me, isEchoingSuggestion(text) {
+                return
+            }
 
-    // MARK: - Entry distribution
+            if speaker == .me {
+                lastUserOwnSpeechAt = timestamp
+                clearDisplay()
+            }
 
-    func feedEntry(_ entry: TranscriptEntry, allEntries: [TranscriptEntry]) {
-        guard settingsStore.settings.autoSuggest else { return }
-
-        // Skip echo — user reading suggestion aloud
-        if entry.speaker == .me, isEchoingSuggestion(entry.text) {
-            #if DEBUG
-            print("[SuggestionEngine] Echo detected, skipping entry: \(entry.text.prefix(40))")
-            #endif
+            ingestTurnFragment(text, speaker: speaker, timestamp: timestamp)
+            notifySpeechActivity(
+                SpeechActivityEvent(speaker: speaker, didProduceText: true, timestamp: timestamp)
+            )
             return
         }
 
-        for observer in observers {
-            observer.processNewEntry(entry, allEntries: allEntries)
-        }
+        let activity = SpeechActivityEvent(speaker: speaker, didProduceText: false, timestamp: timestamp)
+        notifySpeechActivity(activity)
+        evaluatePendingSignals()
     }
 
-    func feedSilence(allEntries: [TranscriptEntry]) {
-        guard settingsStore.settings.autoSuggest else { return }
-        for observer in observers {
-            if let stuckObserver = observer as? StuckObserver {
-                stuckObserver.processSilence(allEntries: allEntries)
-            }
-        }
-    }
-
-    // MARK: - User commands (buttons)
-
-    func handleUserCommand(action: VoiceAction, transcript: String) {
+    func handleUserCommand(action: VoiceAction, entries: [TranscriptEntry]) {
+        let transcript = manualTranscript(for: action, entries: entries)
         guard !transcript.isEmpty else {
-            buffer = "Aguardando transcrição... Fale algo primeiro."
-            displayedText = buffer
+            displayedText = "Waiting for transcript... say something first."
+            buffer = displayedText
+            lastSuggestionDisplayedAt = Date()
+            holdUntil = Date().addingTimeInterval(timings.holdMinimumSeconds)
+            state = .holdingVisibleSuggestion(isManual: true)
+            scheduleReevaluation()
             return
         }
 
         let profile = settingsStore.settings.assistantProfile
-        let prompt = PromptBuilder.buildVoiceActionPrompt(
-            action: action,
-            profile: profile,
-            transcript: transcript,
-            history: sessionHistory
-        )
-
-        let request = SuggestionRequest(
+        let request = SuggestionRequestContext(
+            requestID: UUID(),
             priority: .userCommand,
-            prompt: prompt,
+            prompt: PromptBuilder.buildVoiceActionPrompt(
+                action: action,
+                profile: profile,
+                transcript: transcript,
+                history: sessionHistory
+            ),
             systemPrompt: PromptBuilder.systemPrompt(for: profile),
-            source: "userCommand:\(action.rawValue)"
+            source: "userCommand:\(action.rawValue)",
+            historyLabel: action.promptLabel,
+            signalKind: nil
         )
 
-        handleRequest(request)
+        generate(request, isManual: true)
     }
 
-    // MARK: - Request handling (central decision)
+    // MARK: - Signal handling
 
-    private func handleRequest(_ request: SuggestionRequest) {
-        #if DEBUG
-        print("[SuggestionEngine] Request: \(request.source) priority=\(request.priority) | state: active=\(activeTask != nil) activePriority=\(String(describing: activeRequestPriority)) lastCompleted=\(String(describing: lastCompletedPriority)) reading=\(isUserReading)")
-        #endif
+    private func store(signal: SuggestionSignal) {
+        guard settingsStore.settings.autoSuggest else { return }
+        guard automaticSuggestionsEnabled else { return }
+        pendingSignals.store(signal)
+        evaluatePendingSignals()
+    }
 
-        // 1. userCommand always executes (total bypass)
-        guard request.priority != .userCommand else {
-            #if DEBUG
-            print("[SuggestionEngine] ACCEPTED \(request.source) (userCommand bypass)")
-            #endif
-            generate(request: request)
+    private func evaluatePendingSignals() {
+        reevaluationTask?.cancel()
+
+        guard settingsStore.settings.autoSuggest else { return }
+        guard automaticSuggestionsEnabled else { return }
+        guard activeTask == nil else { return }
+        if !isDisplayProtected, displayedText.isEmpty == false {
+            state = .idle
+        }
+        guard !pendingSignals.isEmpty else { return }
+
+        if let lastUserOwnSpeechAt {
+            let blockedUntil = lastUserOwnSpeechAt.addingTimeInterval(timings.turnPauseSeconds)
+            if blockedUntil > Date() {
+                scheduleReevaluation(for: blockedUntil)
+                return
+            }
+        }
+
+        if isDisplayProtected {
+            scheduleReevaluation()
             return
         }
 
-        // 2. User command lock — manual results persist until dismissed or new command
-        if userCommandLock {
-            #if DEBUG
-            print("[SuggestionEngine] REJECTED \(request.source): user command result is displayed")
-            #endif
-            return
-        }
-
-        // 3. Cooldown check
-        if let cooldownEnd = commandCooldownUntil, Date() < cooldownEnd {
-            #if DEBUG
-            print("[SuggestionEngine] REJECTED \(request.source): in cooldown")
-            #endif
-            return
-        }
-
-        // 4. Hold time check: drop if within hold and priority <= last completed
-        if let holdEnd = holdUntil, Date() < holdEnd,
-           let lastPriority = lastCompletedPriority,
-           request.priority <= lastPriority {
-            #if DEBUG
-            print("[SuggestionEngine] REJECTED \(request.source): in hold time (priority \(request.priority) <= \(lastPriority))")
-            #endif
-            return
-        }
-
-        // 5. Reading detection: drop if reading and priority <= effective
-        let effectivePriority = activeRequestPriority ?? lastCompletedPriority
-        if isUserReading, let priority = effectivePriority,
-           request.priority <= priority {
-            #if DEBUG
-            print("[SuggestionEngine] REJECTED \(request.source): user is reading (priority \(request.priority) <= \(priority))")
-            #endif
-            return
-        }
-
-        // 6. Active task check: drop if priority <= active
-        if activeTask != nil, let activePriority = activeRequestPriority,
-           request.priority <= activePriority {
-            #if DEBUG
-            print("[SuggestionEngine] REJECTED \(request.source): lower priority than active (\(request.priority) <= \(activePriority))")
-            #endif
-            return
-        }
-
-        #if DEBUG
-        print("[SuggestionEngine] ACCEPTED \(request.source) (priority \(request.priority))")
-        #endif
-
-        generate(request: request)
+        guard let signal = pendingSignals.bestAvailable() else { return }
+        pendingSignals.remove(signal.kind)
+        generate(request(for: signal), isManual: false)
     }
 
     // MARK: - Generation
 
-    private func generate(request: SuggestionRequest) {
-        // Cancel active generation
-        activeTask?.cancel()
-        revealTask?.cancel()
+    private func request(for signal: SuggestionSignal) -> SuggestionRequestContext {
+        let profile = settingsStore.settings.assistantProfile
+        let prompt: String
 
-        // Reset accumulation on all observers to prevent stale state
-        for observer in observers {
-            observer.resetAccumulation()
+        switch signal.kind {
+        case .question:
+            prompt = PromptBuilder.buildQuestionResponsePrompt(
+                profile: profile,
+                transcript: signal.transcript,
+                focus: signal.focusText
+            )
+        case .stuck:
+            prompt = PromptBuilder.buildStuckContinuationPrompt(
+                profile: profile,
+                transcript: signal.transcript
+            )
+        case .followUp:
+            prompt = PromptBuilder.buildFollowUpSuggestionPrompt(
+                profile: profile,
+                transcript: signal.transcript
+            )
         }
 
-        // Clear echo memory — new genuine content is being generated
-        lastCompletedSuggestionText = nil
+        return SuggestionRequestContext(
+            requestID: UUID(),
+            priority: signal.priority,
+            prompt: prompt,
+            systemPrompt: PromptBuilder.systemPrompt(for: profile),
+            source: signal.source,
+            historyLabel: nil,
+            signalKind: signal.kind
+        )
+    }
 
-        activeRequestPriority = request.priority
-        userCommandLock = false
+    private func generate(_ request: SuggestionRequestContext, isManual: Bool) {
+        activeTask?.cancel()
+        revealTask?.cancel()
+        reevaluationTask?.cancel()
+
+        activeRequest = request
+        activeGenerationID = request.requestID
+        state = isManual ? .generatingManual : .generatingAuto
+        isStreaming = true
         buffer = ""
         displayedText = ""
         contentHeight = 0
-        isStreaming = true
+        holdUntil = nil
+        lastSuggestionDisplayedAt = nil
+        lastCompletedSuggestionText = nil
 
         startRevealLoop()
 
@@ -221,57 +311,38 @@ final class SuggestionEngine {
             guard let self else { return }
 
             do {
-                // Debounce only for followUp (lowest priority, most spammy)
-                if request.priority == .followUp {
-                    try await Task.sleep(nanoseconds: Constants.Suggestion.DEBOUNCE_NANOSECONDS)
-                    guard !Task.isCancelled else { return }
-                }
-
                 let response = try await self.codexService.chatStream(
                     systemPrompt: request.systemPrompt,
                     userMessage: request.prompt,
                     model: self.settingsStore.settings.aiModel,
                     reasoningLevel: self.settingsStore.settings.aiReasoningLevel,
-                    onChunk: { [weak self] (chunk: String) in
-                        Task { @MainActor in
-                            self?.buffer += chunk
-                        }
+                    requestID: request.requestID
+                ) { [weak self] requestID, chunk in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        guard self.activeGenerationID == requestID else { return }
+                        self.buffer += chunk
                     }
-                )
-
-                guard !Task.isCancelled else { return }
-
-                // Use response as source-of-truth
-                self.buffer = response
-
-                // Save to session history for user commands
-                if request.priority == .userCommand {
-                    self.sessionHistory.append((action: request.source, answer: response))
-                    self.userCommandLock = true
-                    self.commandCooldownUntil = Date().addingTimeInterval(
-                        Constants.Suggestion.COMMAND_COOLDOWN_SECONDS
-                    )
                 }
 
-                #if DEBUG
-                print("[SuggestionEngine] Generation complete: \(response.count) chars from \(request.source)")
-                #endif
-            } catch {
-                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                guard !Task.isCancelled else { return }
+                guard self.activeGenerationID == request.requestID else { return }
 
-                #if DEBUG
-                print("[SuggestionEngine] Generation error: \(error)")
-                #endif
-                self.buffer = "Erro: \(error.localizedDescription)"
+                self.buffer = response
+
+                if isManual {
+                    self.sessionHistory.append((action: request.historyLabel ?? request.source, answer: response))
+                }
+            } catch {
+                guard !(error is CancellationError) else { return }
+                guard self.activeGenerationID == request.requestID else { return }
+                self.buffer = "Error: \(error.localizedDescription)"
             }
 
-            self.lastCompletedPriority = self.activeRequestPriority
+            guard self.activeGenerationID == request.requestID else { return }
             self.activeTask = nil
-            self.activeRequestPriority = nil
         }
     }
-
-    // MARK: - Reveal loop
 
     private func startRevealLoop() {
         revealTask = Task { [weak self] in
@@ -288,67 +359,228 @@ final class SuggestionEngine {
                     self.displayedText = String(self.buffer[..<endIndex])
                     try? await Task.sleep(nanoseconds: Constants.Suggestion.REVEAL_TICK_NANOSECONDS)
                 } else if self.activeTask == nil && self.displayedText.count >= self.buffer.count {
-                    // Done streaming and all text revealed
+                    let finishedManual = self.activeRequest?.priority == .userCommand
                     self.displayedText = self.buffer
                     self.isStreaming = false
+                    self.state = .holdingVisibleSuggestion(isManual: finishedManual)
                     self.lastSuggestionDisplayedAt = Date()
-                    self.holdUntil = Date().addingTimeInterval(Constants.Suggestion.HOLD_MINIMUM_SECONDS)
+                    self.holdUntil = Date().addingTimeInterval(self.timings.holdMinimumSeconds)
                     self.lastCompletedSuggestionText = self.buffer
+                    self.activeGenerationID = nil
+                    self.activeRequest = nil
+                    self.scheduleReevaluation()
                     return
                 } else {
-                    // Waiting for more chunks
                     try? await Task.sleep(nanoseconds: Constants.Suggestion.REVEAL_WAIT_NANOSECONDS)
                 }
             }
         }
     }
 
-    // MARK: - Reading detection
+    // MARK: - Turn assembly
+
+    private func ingestTurnFragment(_ text: String, speaker: TranscriptEntry.Speaker, timestamp: Date) {
+        if let otherSpeaker = TranscriptEntry.Speaker.allCases.first(where: { $0 != speaker }),
+           partialTurns[otherSpeaker] != nil {
+            finalizeTurn(for: otherSpeaker)
+        }
+
+        if var partialTurn = partialTurns[speaker] {
+            if timestamp.timeIntervalSince(partialTurn.updatedAt) > timings.turnPauseSeconds {
+                finalizeTurn(for: speaker)
+                partialTurns[speaker] = PartialTurn(
+                    speaker: speaker,
+                    startedAt: timestamp,
+                    updatedAt: timestamp,
+                    text: text
+                )
+            } else {
+                partialTurn.append(fragment: text, timestamp: timestamp)
+                partialTurns[speaker] = partialTurn
+            }
+        } else {
+            partialTurns[speaker] = PartialTurn(
+                speaker: speaker,
+                startedAt: timestamp,
+                updatedAt: timestamp,
+                text: text
+            )
+        }
+    }
+
+    private func finalizeExpiredTurns(now: Date, excluding speaker: TranscriptEntry.Speaker?) {
+        let speakersToFinalize = partialTurns.values.compactMap { partialTurn -> TranscriptEntry.Speaker? in
+            guard partialTurn.speaker != speaker else { return nil }
+            let elapsed = now.timeIntervalSince(partialTurn.updatedAt)
+            return elapsed >= timings.turnPauseSeconds ? partialTurn.speaker : nil
+        }
+
+        for speaker in speakersToFinalize {
+            finalizeTurn(for: speaker)
+        }
+    }
+
+    private func finalizeTurn(for speaker: TranscriptEntry.Speaker) {
+        guard let partialTurn = partialTurns.removeValue(forKey: speaker) else { return }
+        let trimmedText = partialTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+
+        let turn = ConversationTurn(
+            speaker: speaker,
+            text: trimmedText,
+            startedAt: partialTurn.startedAt,
+            updatedAt: partialTurn.updatedAt
+        )
+
+        recentTurns.append(turn)
+        trimRecentTurns()
+
+        guard settingsStore.settings.autoSuggest else { return }
+        for observer in observers {
+            observer.processTurn(turn, recentTurns: recentTurns)
+        }
+    }
+
+    private func notifySpeechActivity(_ activity: SpeechActivityEvent) {
+        guard settingsStore.settings.autoSuggest else { return }
+        for observer in observers {
+            observer.processSpeechActivity(activity, recentTurns: recentTurns)
+        }
+    }
+
+    private func trimRecentTurns() {
+        let cutoff = Date().addingTimeInterval(-Constants.Suggestion.TRANSCRIPT_WINDOW_SECONDS)
+        recentTurns.removeAll { $0.updatedAt < cutoff }
+
+        if recentTurns.count > Constants.Suggestion.MAX_RECENT_TURNS {
+            recentTurns.removeFirst(recentTurns.count - Constants.Suggestion.MAX_RECENT_TURNS)
+        }
+    }
+
+    // MARK: - Reading / hold
+
+    private var isDisplayProtected: Bool {
+        guard !displayedText.isEmpty else { return false }
+
+        if let holdUntil, holdUntil > Date() {
+            return true
+        }
+
+        return isUserReading
+    }
+
+    private var readingDeadline: Date? {
+        guard !displayedText.isEmpty else { return nil }
+        guard let displayedAt = lastSuggestionDisplayedAt else { return nil }
+        let readingTime = max(
+            timings.readingThresholdSeconds,
+            Double(displayedText.count) / timings.readingCharsPerSecond
+        )
+        return displayedAt.addingTimeInterval(readingTime)
+    }
 
     private var isUserReading: Bool {
-        guard !displayedText.isEmpty else { return false }
-        guard let displayedAt = lastSuggestionDisplayedAt else { return false }
-        let elapsed = Date().timeIntervalSince(displayedAt)
-        let readingTime = max(
-            Constants.Suggestion.READING_THRESHOLD_SECONDS,
-            Double(displayedText.count) / Constants.Suggestion.READING_CHARS_PER_SECOND
-        )
-        return elapsed < readingTime
+        guard let readingDeadline else { return false }
+        return readingDeadline > Date()
+    }
+
+    private func scheduleReevaluation(for explicitDate: Date? = nil) {
+        reevaluationTask?.cancel()
+
+        let targetDate = explicitDate ?? {
+            var dates: [Date] = []
+            if let holdUntil {
+                dates.append(holdUntil)
+            }
+            if let readingDeadline {
+                dates.append(readingDeadline)
+            }
+            if let lastUserOwnSpeechAt {
+                dates.append(lastUserOwnSpeechAt.addingTimeInterval(timings.turnPauseSeconds))
+            }
+            return dates.max()
+        }()
+
+        guard let targetDate else {
+            state = displayedText.isEmpty ? .idle : state
+            evaluatePendingSignals()
+            return
+        }
+
+        let delay = targetDate.timeIntervalSinceNow + timings.reevaluationGraceSeconds
+        if delay <= 0 {
+            state = displayedText.isEmpty ? .idle : state
+            evaluatePendingSignals()
+            return
+        }
+
+        reevaluationTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                if self.displayedText.isEmpty {
+                    self.state = .idle
+                }
+                self.evaluatePendingSignals()
+            }
+        }
     }
 
     // MARK: - Lifecycle
 
     func clearDisplay() {
-        guard !displayedText.isEmpty || isStreaming else { return }
         revealTask?.cancel()
         activeTask?.cancel()
+        reevaluationTask?.cancel()
+        activeTask = nil
+        revealTask = nil
+        isStreaming = false
         displayedText = ""
         buffer = ""
-        isStreaming = false
         contentHeight = 0
-        activeRequestPriority = nil
-        lastCompletedPriority = nil
-        lastSuggestionDisplayedAt = nil
         holdUntil = nil
-        userCommandLock = false
+        lastSuggestionDisplayedAt = nil
+        activeRequest = nil
+        activeGenerationID = nil
+        state = .idle
+        scheduleReevaluation()
     }
 
     func reset() {
-        activeTask?.cancel()
-        revealTask?.cancel()
-        activeTask = nil
-        revealTask = nil
-        displayedText = ""
-        buffer = ""
-        isStreaming = false
-        contentHeight = 0
-        activeRequestPriority = nil
-        lastCompletedPriority = nil
-        lastSuggestionDisplayedAt = nil
-        commandCooldownUntil = nil
-        holdUntil = nil
+        clearDisplay()
+        pendingSignals.clear()
+        partialTurns.removeAll()
+        recentTurns.removeAll()
         lastCompletedSuggestionText = nil
-        userCommandLock = false
+        lastUserOwnSpeechAt = nil
         sessionHistory.removeAll()
+        observers.forEach { $0.reset() }
     }
+
+    // MARK: - Helpers
+
+    private func manualTranscript(for action: VoiceAction, entries: [TranscriptEntry]) -> String {
+        let relevantEntries: [TranscriptEntry]
+        if action == .recap {
+            let recent = entries.filter {
+                $0.timestamp >= Date().addingTimeInterval(-Constants.Suggestion.TRANSCRIPT_WINDOW_SECONDS)
+            }
+            relevantEntries = recent.isEmpty ? entries.suffix(20).map { $0 } : recent
+        } else {
+            relevantEntries = entries.suffix(20).map { $0 }
+        }
+
+        return relevantEntries.map(\.formatted).joined(separator: "\n")
+    }
+
+    private func tokenize(_ text: String) -> [String] {
+        let folded = text.lowercased().folding(options: .diacriticInsensitive, locale: .current)
+        return folded.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 1 }
+    }
+}
+
+private extension TranscriptEntry.Speaker {
+    static let allCases: [TranscriptEntry.Speaker] = [.me, .interviewer]
 }

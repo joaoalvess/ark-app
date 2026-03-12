@@ -1,10 +1,49 @@
 import Foundation
 
 enum VoiceAction: String, CaseIterable {
-    case assist
-    case whatToSay
+    case answer
+    case continueSpeaking
     case followUp
     case recap
+
+    var displayLabel: String {
+        switch self {
+        case .answer:
+            "Answer"
+        case .continueSpeaking:
+            "Continue"
+        case .followUp:
+            "Follow-up"
+        case .recap:
+            "Recap"
+        }
+    }
+
+    var promptLabel: String {
+        switch self {
+        case .answer:
+            "Responder"
+        case .continueSpeaking:
+            "Continuar"
+        case .followUp:
+            "Follow-up"
+        case .recap:
+            "Recap"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .answer:
+            "message.badge"
+        case .continueSpeaking:
+            "ellipsis"
+        case .followUp:
+            "text.append"
+        case .recap:
+            "arrow.counterclockwise"
+        }
+    }
 }
 
 enum PromptBuilder {
@@ -93,31 +132,35 @@ enum PromptBuilder {
         """
     }
 
-    static func buildSuggestionPrompt(profile: AssistantProfile, transcript: String) -> String {
+    static func buildQuestionResponsePrompt(profile: AssistantProfile, transcript: String, focus: String) -> String {
         let instruction: String
         switch profile {
         case .generalist:
             instruction = """
-            Com base na última fala do interlocutor, sugira uma resposta pronta que o usuário pode falar diretamente. \
-            A resposta deve soar natural e profissional. Máximo 3-4 frases.
+            Responda à última pergunta ou tema aberto do interlocutor com uma fala pronta e natural. \
+            Seja direto e profissional. Máximo 3 frases.
             """
 
         case .code:
             instruction = """
-            Com base na última parte da discussão, forneça pontos-chave técnicos relevantes. \
-            Inclua snippets de código quando apropriado. Seja direto e técnico.
+            Responda ao último ponto técnico levantado na conversa. \
+            Foque no raciocínio principal e seja direto.
             """
 
         case .techInterview:
             instruction = """
-            Com base na última pergunta do entrevistador, sugira uma resposta curta, natural e pronta para o candidato falar. \
-            Máximo 2 frases, sem bullets e sem explicações extras.
+            Responda à última pergunta explícita do entrevistador. \
+            Se a fala não for uma pergunta clara, responda ao último tema aberto por ele. \
+            Entregue no máximo 2 frases curtas, naturais e prontas para o candidato falar, sem bullets.
             """
         }
 
         return """
         ## Transcrição
         \(transcript)
+
+        ## Foco Atual
+        \(focus)
 
         \(instruction)
         """
@@ -140,9 +183,9 @@ enum PromptBuilder {
             """
         case .techInterview:
             instruction = """
-            Com base no contexto da entrevista, sugira algo relevante que o candidato \
-            poderia acrescentar à conversa agora — um insight, exemplo ou ponto complementar. \
-            Máximo 2 frases curtas e naturais.
+            Sugira a melhor continuação do assunto atual. \
+            Pode ser uma pergunta ou um comentário curto, mas deve soar natural e ajudar a conversa a avançar. \
+            Máximo 2 frases curtas e prontas para falar.
             """
         }
 
@@ -189,37 +232,37 @@ enum PromptBuilder {
         let instruction: String
 
         switch (action, profile) {
-        // .assist
-        case (.assist, .techInterview):
-            instruction = "Analise a última pergunta ou tema da entrevista e dê ao candidato a melhor estratégia de resposta. Diga o que enfatizar e o que evitar. 2-3 frases diretas, sem formatação."
-        case (.assist, .code):
-            instruction = "Analise o ponto técnico em discussão e dê orientação prática ao desenvolvedor. Aponte o que é mais relevante ou o que pode estar faltando. 2-3 frases diretas."
-        case (.assist, .generalist):
-            instruction = "Analise o contexto da conversa e dê orientação prática ao usuário. Foque no que é mais relevante para o momento. 2-3 frases diretas."
+        // .answer
+        case (.answer, .techInterview):
+            instruction = "Responda à última pergunta explícita do entrevistador. Se não houver pergunta clara, responda ao último tema aberto por ele. Entregue 1-2 frases curtas, naturais e prontas para falar, sem bullets."
+        case (.answer, .code):
+            instruction = "Responda ao último ponto técnico levantado na conversa. Se não houver pergunta clara, responda ao tema mais recente. Seja direto e útil."
+        case (.answer, .generalist):
+            instruction = "Responda à última pergunta clara da conversa. Se não houver pergunta, responda ao tema mais recente com uma fala pronta e natural."
 
-        // .whatToSay
-        case (.whatToSay, .techInterview):
-            instruction = "O candidato precisa de ajuda para continuar ou completar sua resposta ao entrevistador. Continue o raciocínio dele de forma natural, como se estivesse concluindo o pensamento. Comece com '...' para indicar continuação. 2-3 frases prontas para falar, naturais e confiantes. Sem bullets, sem markdown, sem explicações — apenas a continuação da fala."
-        case (.whatToSay, .code):
-            instruction = "O desenvolvedor precisa de ajuda para continuar ou completar sua fala. Continue o raciocínio dele de forma natural, concluindo o ponto técnico. Comece com '...' para indicar continuação. 2-3 frases prontas para falar."
-        case (.whatToSay, .generalist):
-            instruction = "O usuário precisa de ajuda para continuar ou completar sua fala. Continue o raciocínio dele de forma natural, como se estivesse concluindo o pensamento. Comece com '...' para indicar continuação. 2-3 frases prontas para falar."
+        // .continueSpeaking
+        case (.continueSpeaking, .techInterview):
+            instruction = "O candidato travou. Continue o raciocínio dele exatamente de onde ele parou. Comece com '...' e entregue 2-3 frases curtas, naturais e prontas para falar. Não reinicie a resposta."
+        case (.continueSpeaking, .code):
+            instruction = "O desenvolvedor travou. Continue o raciocínio dele de onde ele parou. Comece com '...' e entregue 2-3 frases diretas."
+        case (.continueSpeaking, .generalist):
+            instruction = "O usuário travou. Continue o raciocínio dele de onde ele parou. Comece com '...' e entregue 2-3 frases naturais e prontas para falar."
 
         // .followUp
         case (.followUp, .techInterview):
-            instruction = "Sugira uma pergunta ou comentário inteligente que o candidato pode fazer agora para demonstrar interesse e profundidade técnica. 1-2 frases naturais, prontas para falar."
+            instruction = "Sugira a melhor continuação do assunto atual. Pode ser uma pergunta ou um comentário curto, mas deve soar natural e ajudar a conversa a avançar. 1-2 frases prontas para falar."
         case (.followUp, .code):
-            instruction = "Sugira uma pergunta técnica ou consideração de design relevante que o desenvolvedor pode trazer agora. 1-2 frases diretas."
+            instruction = "Sugira a melhor continuação do assunto atual. Pode ser uma pergunta técnica ou um comentário curto de design. 1-2 frases diretas."
         case (.followUp, .generalist):
-            instruction = "Sugira uma pergunta ou comentário relevante que o usuário pode fazer agora para avançar a conversa. 1-2 frases naturais."
+            instruction = "Sugira a melhor continuação da conversa no assunto atual. Pode ser uma pergunta ou comentário curto. 1-2 frases naturais."
 
         // .recap
         case (.recap, .techInterview):
-            instruction = "Resuma os pontos principais discutidos na entrevista até agora: perguntas feitas, temas abordados e como o candidato se saiu. 2-3 frases diretas."
+            instruction = "Resuma factualmente os últimos minutos da conversa em exatamente 3 bullets curtos. Foque em perguntas feitas, temas abordados e respostas dadas. Não avalie desempenho."
         case (.recap, .code):
-            instruction = "Resuma os pontos técnicos discutidos até agora: decisões tomadas, problemas identificados e próximos passos. 2-3 frases diretas."
+            instruction = "Resuma factualmente os últimos minutos da conversa em exatamente 3 bullets curtos. Foque em temas técnicos e decisões discutidas."
         case (.recap, .generalist):
-            instruction = "Resuma os pontos principais da conversa até agora. 2-3 frases diretas."
+            instruction = "Resuma factualmente os últimos minutos da conversa em exatamente 3 bullets curtos."
         }
 
         var parts: [String] = []

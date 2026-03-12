@@ -2,48 +2,38 @@ import Foundation
 
 @MainActor
 final class QuestionObserver: TranscriptObserver {
-    var onRequest: ((SuggestionRequest) -> Void)?
+    var onSignal: ((SuggestionSignal) -> Void)?
 
-    private let settingsStore: SettingsStore
-    private var lastProcessedInterviewerID: UUID?
+    private var lastProcessedTurnID: UUID?
 
-    init(settingsStore: SettingsStore) {
-        self.settingsStore = settingsStore
-    }
+    func processTurn(_ turn: ConversationTurn, recentTurns: [ConversationTurn]) {
+        guard turn.speaker == .interviewer else { return }
+        guard turn.id != lastProcessedTurnID else { return }
+        guard InterviewAssistantEngine.isLikelyQuestion(turn.text) else { return }
 
-    func processNewEntry(_ entry: TranscriptEntry, allEntries: [TranscriptEntry]) {
-        guard entry.speaker == .interviewer else { return }
-        guard entry.id != lastProcessedInterviewerID else { return }
+        lastProcessedTurnID = turn.id
 
-        let text = entry.text
-        guard InterviewAssistantEngine.shouldTriggerSuggestion(for: text) else { return }
-
-        lastProcessedInterviewerID = entry.id
-
-        let profile = settingsStore.settings.assistantProfile
-        let transcript = allEntries.suffix(20).map(\.formatted).joined(separator: "\n")
-        let isQuestion = InterviewAssistantEngine.isLikelyQuestion(text)
-
-        let prompt: String
-        if isQuestion {
-            prompt = PromptBuilder.buildSuggestionPrompt(profile: profile, transcript: transcript)
-        } else {
-            prompt = PromptBuilder.buildFollowUpSuggestionPrompt(profile: profile, transcript: transcript)
-        }
-
-        let request = SuggestionRequest(
-            priority: .interviewerQuestion,
-            prompt: prompt,
-            systemPrompt: PromptBuilder.systemPrompt(for: profile),
-            source: isQuestion ? "questionObserver:question" : "questionObserver:statement"
+        onSignal?(
+            SuggestionSignal(
+                kind: .question,
+                priority: .interviewerQuestion,
+                transcript: recentTranscript(from: recentTurns),
+                focusText: turn.text,
+                source: "questionObserver"
+            )
         )
-
-        #if DEBUG
-        print("[QuestionObserver] Detected interviewer entry: \(text.prefix(60))... isQuestion=\(isQuestion)")
-        #endif
-
-        onRequest?(request)
     }
 
-    func resetAccumulation() { /* stateless per entry */ }
+    func processSpeechActivity(_ activity: SpeechActivityEvent, recentTurns: [ConversationTurn]) {}
+
+    func reset() {
+        lastProcessedTurnID = nil
+    }
+
+    private func recentTranscript(from turns: [ConversationTurn]) -> String {
+        turns
+            .suffix(Constants.Suggestion.MAX_RECENT_TURNS)
+            .map(\.formatted)
+            .joined(separator: "\n")
+    }
 }

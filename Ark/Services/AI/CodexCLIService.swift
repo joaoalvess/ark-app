@@ -1,8 +1,20 @@
 import Foundation
 import Observation
 
+@MainActor
+protocol SuggestionCodexClient: AnyObject {
+    func chatStream(
+        systemPrompt: String,
+        userMessage: String,
+        model: String?,
+        reasoningLevel: String?,
+        requestID: UUID,
+        onChunk: @escaping @Sendable (UUID, String) -> Void
+    ) async throws -> String
+}
+
 @MainActor @Observable
-final class CodexCLIService {
+final class CodexCLIService: SuggestionCodexClient {
     private(set) var isAvailable = false
     private(set) var isAuthenticated = false
     private var codexPath: String?
@@ -41,9 +53,9 @@ final class CodexCLIService {
         let result = await runShellCommand("\(sourcePrefix)npm install -g @openai/codex", timeout: 300)
         if result.exitCode == 0 {
             await checkAvailability()
-            return (true, "Codex CLI instalado com sucesso")
+            return (true, "Codex CLI installed successfully")
         } else {
-            return (false, result.stderr.isEmpty ? "Falha na instalacao" : "Falha na instalacao: \(result.stderr)")
+            return (false, result.stderr.isEmpty ? "Installation failed" : "Installation failed: \(result.stderr)")
         }
     }
 
@@ -55,14 +67,14 @@ final class CodexCLIService {
 
     func login() async -> (success: Bool, message: String) {
         guard let command = await resolvedCommand() else {
-            return (false, "Codex CLI nao encontrado no sistema")
+            return (false, "Codex CLI not found on this system")
         }
         let result = await runShellCommand("\(command) login", timeout: 120)
         if result.exitCode == 0 {
             isAuthenticated = await checkAuth()
-            return (isAuthenticated, isAuthenticated ? "Login realizado com sucesso" : "Login completou mas autenticacao nao confirmada")
+            return (isAuthenticated, isAuthenticated ? "Login completed successfully" : "Login completed, but authentication was not confirmed")
         } else {
-            return (false, result.stderr.isEmpty ? "Falha no login" : "Falha no login: \(result.stderr)")
+            return (false, result.stderr.isEmpty ? "Login failed" : "Login failed: \(result.stderr)")
         }
     }
 
@@ -79,92 +91,124 @@ final class CodexCLIService {
         reasoningLevel: String? = nil,
         onChunk: @escaping @Sendable (String) -> Void
     ) async throws -> String {
+        try await chatStream(
+            systemPrompt: systemPrompt,
+            userMessage: userMessage,
+            model: model,
+            reasoningLevel: reasoningLevel,
+            requestID: UUID()
+        ) { _, chunk in
+            onChunk(chunk)
+        }
+    }
+
+    func chatStream(
+        systemPrompt: String,
+        userMessage: String,
+        model: String? = nil,
+        reasoningLevel: String? = nil,
+        requestID: UUID,
+        onChunk: @escaping @Sendable (UUID, String) -> Void
+    ) async throws -> String {
         let prompt = "\(systemPrompt)\n\n\(userMessage)"
+        let cancellationBox = StreamCancellationBox()
 
-        let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
+        return try await withTaskCancellationHandler(operation: {
+            guard let command = await resolvedCommand() else {
+                throw CodexError.notAvailable
+            }
 
-        guard let command = await resolvedCommand() else {
-            throw CodexError.notAvailable
-        }
-        let escapedPrompt = prompt.replacingOccurrences(of: "'", with: "'\\''")
-        let modelFlag = model.map { " --model \($0)" } ?? ""
-        let reasoningFlag = reasoningLevel.map { " -c model_reasoning_effort=\"\($0)\"" } ?? ""
-        process.executableURL = URL(fileURLWithPath: Self.userShell)
-        process.arguments = ["-l", "-c", "\(command) exec --json\(modelFlag)\(reasoningFlag) '\(escapedPrompt)' --skip-git-repo-check"]
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+            let processInstance = Process()
+            let stdoutPipeInstance = Pipe()
+            let stderrPipeInstance = Pipe()
+            cancellationBox.process = processInstance
+            cancellationBox.stdoutPipe = stdoutPipeInstance
+            cancellationBox.stderrPipe = stderrPipeInstance
 
-        try process.run()
+            let escapedPrompt = prompt.replacingOccurrences(of: "'", with: "'\\''")
+            let modelFlag = model.map { " --model \($0)" } ?? ""
+            let reasoningFlag = reasoningLevel.map { " -c model_reasoning_effort=\"\($0)\"" } ?? ""
+            processInstance.executableURL = URL(fileURLWithPath: Self.userShell)
+            processInstance.arguments = ["-l", "-c", "\(command) exec --json\(modelFlag)\(reasoningFlag) '\(escapedPrompt)' --skip-git-repo-check"]
+            processInstance.standardOutput = stdoutPipeInstance
+            processInstance.standardError = stderrPipeInstance
 
-        // Read stderr in parallel
-        let stderrHandle = stderrPipe.fileHandleForReading
-        let stderrCollector = Task.detached { () -> String in
-            let data = stderrHandle.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
-        }
+            try processInstance.run()
 
-        let streamResult: String = try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask { [self] in
-                var fullResponse = ""
-                var byteBuffer = Data()
+            let stderrHandle = stderrPipeInstance.fileHandleForReading
+            let stderrCollector = Task.detached { () -> String in
+                let data = stderrHandle.readDataToEndOfFile()
+                return String(data: data, encoding: .utf8) ?? ""
+            }
 
-                let handle = stdoutPipe.fileHandleForReading
-                for try await byte in handle.bytes {
-                    if byte == UInt8(ascii: "\n") {
+            let streamResult: String = try await withThrowingTaskGroup(of: String.self) { group in
+                group.addTask { [self] in
+                    var fullResponse = ""
+                    var byteBuffer = Data()
+
+                    let handle = stdoutPipeInstance.fileHandleForReading
+                    for try await byte in handle.bytes {
+                        try Task.checkCancellation()
+                        if byte == UInt8(ascii: "\n") {
+                            if let line = String(data: byteBuffer, encoding: .utf8),
+                               let text = self.extractAgentMessage(from: line) {
+                                fullResponse += text
+                                onChunk(requestID, text)
+                            }
+                            byteBuffer.removeAll()
+                        } else {
+                            byteBuffer.append(byte)
+                        }
+                    }
+
+                    if !byteBuffer.isEmpty {
                         if let line = String(data: byteBuffer, encoding: .utf8),
                            let text = self.extractAgentMessage(from: line) {
                             fullResponse += text
-                            onChunk(text)
+                            onChunk(requestID, text)
                         }
-                        byteBuffer.removeAll()
-                    } else {
-                        byteBuffer.append(byte)
                     }
+
+                    return fullResponse
                 }
 
-                // Handle remaining buffer
-                if !byteBuffer.isEmpty {
-                    if let line = String(data: byteBuffer, encoding: .utf8),
-                       let text = self.extractAgentMessage(from: line) {
-                        fullResponse += text
-                        onChunk(text)
-                    }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 120_000_000_000)
+                    throw CodexError.failed(exit: -1, stderr: "Timeout: response took longer than 120s")
                 }
-                return fullResponse
+
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
             }
 
-            group.addTask {
-                try await Task.sleep(nanoseconds: 120_000_000_000)
-                throw CodexError.failed(exit: -1, stderr: "Timeout: resposta demorou mais de 120s")
-            }
+            try Task.checkCancellation()
+            processInstance.waitUntilExit()
+            let stderr = await stderrCollector.value
 
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
-
-        process.waitUntilExit()
-        let stderr = await stderrCollector.value
-
-        #if DEBUG
-        if !stderr.isEmpty {
-            print("[CodexCLI] stderr: \(stderr.prefix(500))")
-        }
-        #endif
-
-        if streamResult.isEmpty {
-            if process.terminationStatus != 0 {
-                throw CodexError.failed(exit: Int(process.terminationStatus), stderr: stderr)
-            }
-            // Process succeeded but no agent_message found — return stderr as hint
+            #if DEBUG
             if !stderr.isEmpty {
-                throw CodexError.failed(exit: 0, stderr: "Sem resposta do modelo. stderr: \(stderr)")
+                print("[CodexCLI] stderr: \(stderr.prefix(500))")
             }
-        }
+            #endif
 
-        return streamResult
+            if streamResult.isEmpty {
+                if processInstance.terminationStatus != 0 {
+                    throw CodexError.failed(exit: Int(processInstance.terminationStatus), stderr: stderr)
+                }
+                if !stderr.isEmpty {
+                    throw CodexError.failed(exit: 0, stderr: "No model response. stderr: \(stderr)")
+                }
+            }
+
+            return streamResult
+        }, onCancel: {
+            if let process = cancellationBox.process, process.isRunning {
+                process.terminate()
+            }
+            cancellationBox.stdoutPipe?.fileHandleForReading.closeFile()
+            cancellationBox.stderrPipe?.fileHandleForReading.closeFile()
+        })
     }
     func testConnection() async -> Bool {
         do {
@@ -220,7 +264,7 @@ final class CodexCLIService {
 
             group.addTask {
                 try await Task.sleep(nanoseconds: 120_000_000_000)
-                throw CodexError.failed(exit: -1, stderr: "Timeout: resposta demorou mais de 120s")
+                throw CodexError.failed(exit: -1, stderr: "Timeout: response took longer than 120s")
             }
 
             let result = try await group.next()!
@@ -362,9 +406,9 @@ final class CodexCLIService {
         var errorDescription: String? {
             switch self {
             case .failed(let exit, let stderr):
-                "Codex CLI falhou (exit \(exit))\(stderr.isEmpty ? "" : ": \(stderr)")"
+                "Codex CLI failed (exit \(exit))\(stderr.isEmpty ? "" : ": \(stderr)")"
             case .notAvailable:
-                "Codex CLI nao encontrado. Instale com: npm install -g @openai/codex"
+                "Codex CLI not found. Install it with: npm install -g @openai/codex"
             }
         }
     }
@@ -374,6 +418,12 @@ private struct ShellResult: Sendable {
     let exitCode: Int
     let stdout: String
     let stderr: String
+}
+
+private final class StreamCancellationBox: @unchecked Sendable {
+    var process: Process?
+    var stdoutPipe: Pipe?
+    var stderrPipe: Pipe?
 }
 
 private func runShellCommand(_ command: String, timeout: TimeInterval) async -> ShellResult {
@@ -401,7 +451,7 @@ private func runShellCommand(_ command: String, timeout: TimeInterval) async -> 
 
             if finished == .timedOut {
                 process.terminate()
-                continuation.resume(returning: ShellResult(exitCode: -1, stdout: "", stderr: "Timeout apos \(Int(timeout))s"))
+                continuation.resume(returning: ShellResult(exitCode: -1, stdout: "", stderr: "Timeout after \(Int(timeout))s"))
                 return
             }
 

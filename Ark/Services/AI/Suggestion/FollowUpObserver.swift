@@ -2,56 +2,61 @@ import Foundation
 
 @MainActor
 final class FollowUpObserver: TranscriptObserver {
-    var onRequest: ((SuggestionRequest) -> Void)?
+    var onSignal: ((SuggestionSignal) -> Void)?
 
-    private let settingsStore: SettingsStore
-    private var entriesSinceLastFire = 0
+    private var lastSuggestedTurnID: UUID?
+    private var lastFireDate: Date?
 
-    init(settingsStore: SettingsStore) {
-        self.settingsStore = settingsStore
-    }
+    func processTurn(_ turn: ConversationTurn, recentTurns: [ConversationTurn]) {}
 
-    func processNewEntry(_ entry: TranscriptEntry, allEntries: [TranscriptEntry]) {
-        entriesSinceLastFire += 1
-
-        guard entriesSinceLastFire >= Constants.Suggestion.FOLLOW_UP_ENTRIES_BETWEEN_FIRES else { return }
-
-        // Don't fire if latest entry is an interviewer question (QuestionObserver handles that)
-        if entry.speaker == .interviewer,
-           InterviewAssistantEngine.isLikelyQuestion(entry.text) {
+    func processSpeechActivity(_ activity: SpeechActivityEvent, recentTurns: [ConversationTurn]) {
+        guard !activity.didProduceText else { return }
+        guard recentTurns.count >= 2 else { return }
+        guard let lastTurn = recentTurns.last else { return }
+        guard lastTurn.id != lastSuggestedTurnID else { return }
+        guard activity.timestamp.timeIntervalSince(lastTurn.updatedAt) >= Constants.Suggestion.FOLLOW_UP_LULL_SECONDS else {
             return
         }
 
-        // Suppress if recent entries look incomplete — let StuckObserver handle it
-        let recentMeEntries = allEntries.suffix(3).filter { $0.speaker == .me }
-        let incompleteCount = recentMeEntries.filter {
-            InterviewAssistantEngine.isLikelyIncompleteResponse($0.text)
-        }.count
-        if incompleteCount >= 2 {
-            return // Don't reset entriesSinceLastFire — retry on next entry
+        if lastTurn.speaker == .interviewer,
+           InterviewAssistantEngine.isLikelyQuestion(lastTurn.text) {
+            return
         }
 
-        entriesSinceLastFire = 0
+        if lastTurn.speaker == .me,
+           InterviewAssistantEngine.isLikelyIncompleteResponse(lastTurn.text) {
+            return
+        }
 
-        let profile = settingsStore.settings.assistantProfile
-        let transcript = allEntries.suffix(20).map(\.formatted).joined(separator: "\n")
-        let prompt = PromptBuilder.buildFollowUpSuggestionPrompt(profile: profile, transcript: transcript)
+        if let lastFireDate,
+           activity.timestamp.timeIntervalSince(lastFireDate) < Constants.Suggestion.HOLD_MINIMUM_SECONDS {
+            return
+        }
 
-        let request = SuggestionRequest(
-            priority: .followUp,
-            prompt: prompt,
-            systemPrompt: PromptBuilder.systemPrompt(for: profile),
-            source: "followUpObserver"
+        lastSuggestedTurnID = lastTurn.id
+        lastFireDate = activity.timestamp
+
+        onSignal?(
+            SuggestionSignal(
+                kind: .followUp,
+                priority: .followUp,
+                transcript: recentTranscript(from: recentTurns),
+                focusText: lastTurn.text,
+                source: "followUpObserver",
+                timestamp: activity.timestamp
+            )
         )
-
-        #if DEBUG
-        print("[FollowUpObserver] Firing follow-up suggestion after \(Constants.Suggestion.FOLLOW_UP_ENTRIES_BETWEEN_FIRES) entries")
-        #endif
-
-        onRequest?(request)
     }
 
-    func resetAccumulation() {
-        entriesSinceLastFire = 0
+    func reset() {
+        lastSuggestedTurnID = nil
+        lastFireDate = nil
+    }
+
+    private func recentTranscript(from turns: [ConversationTurn]) -> String {
+        turns
+            .suffix(Constants.Suggestion.MAX_RECENT_TURNS)
+            .map(\.formatted)
+            .joined(separator: "\n")
     }
 }
