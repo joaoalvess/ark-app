@@ -13,6 +13,10 @@ struct TranscriptCaptureState: Equatable, Sendable {
     var lastAudioActivityAt: Date?
     var lastRecognizedText = ""
     var lastRecognizedAt: Date?
+    var queueDepth = 0
+    var coalescedChunkCount = 0
+    var discardedWindowCount = 0
+    var lastError: String?
 
     func status(now: Date = Date()) -> String {
         guard isCapturing else { return "Stopped" }
@@ -48,6 +52,20 @@ struct TranscriptCaptureState: Equatable, Sendable {
         }
 
         return "No speech recognized yet."
+    }
+
+    var diagnosticsText: String {
+        var parts = [
+            "Queue \(queueDepth)",
+            "Merged \(coalescedChunkCount)",
+            "Discarded \(discardedWindowCount)"
+        ]
+
+        if let lastError, !lastError.isEmpty {
+            parts.append(lastError)
+        }
+
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -88,6 +106,8 @@ final class AppState {
     private var askSessionHistory: [(question: String, answer: String)] = []
     private var transcriptionResultsTask: Task<Void, Never>?
     private var listeningSessionID = UUID()
+    private var silenceFlushTasks: [TranscriptionSource: Task<Void, Never>] = [:]
+    private var liveTranscriptEntryIDs: [TranscriptEntry.Speaker: UUID] = [:]
 
     init() {
         let codex = CodexCLIService()
@@ -271,6 +291,10 @@ final class AppState {
         captureState(for: speaker).previewText
     }
 
+    func captureDiagnosticsText(for speaker: TranscriptEntry.Speaker) -> String {
+        captureState(for: speaker).diagnosticsText
+    }
+
     // MARK: - Private
 
     private func transitionPanel(to newMode: PanelMode) {
@@ -307,9 +331,15 @@ final class AppState {
 
             listeningSessionID = UUID()
             await transcriptionCoordinator.reset()
+            await transcriptionCoordinator.configure(
+                windowDuration: settingsStore.settings.chunkDuration,
+                strideDuration: Constants.Suggestion.ANALYSIS_CHUNK_DURATION
+            )
             transcriptManager.clear()
             resetTranscriptDiagnostics()
             suggestionEngine.reset()
+            cancelSilenceFlushTasks()
+            liveTranscriptEntryIDs.removeAll()
             voicePanelMeasuredHeight = 0
             transcriptPanelMeasuredHeight = 0
             audioManager.configure(chunkDuration: Constants.Suggestion.ANALYSIS_CHUNK_DURATION)
@@ -335,12 +365,28 @@ final class AppState {
     }
 
     private func stopListening() async {
+        let stopTimestamp = Date()
+        await flushPendingTranscription(
+            source: .mic,
+            sessionID: listeningSessionID,
+            at: stopTimestamp,
+            reason: .sessionEnd
+        )
+        await flushPendingTranscription(
+            source: .system,
+            sessionID: listeningSessionID,
+            at: stopTimestamp,
+            reason: .sessionEnd
+        )
+
         listeningSessionID = UUID()
+        cancelSilenceFlushTasks()
         audioManager.stopListening()
         await transcriptionCoordinator.reset()
         suggestionEngine.reset()
         transcriptManager.clear()
         resetTranscriptDiagnostics()
+        liveTranscriptEntryIDs.removeAll()
         voicePanelMeasuredHeight = 0
         transcriptPanelMeasuredHeight = 0
         isListening = false
@@ -423,8 +469,10 @@ final class AppState {
         guard isListening else { return }
 
         recordAudioActivity(source: source, timestamp: timestamp)
+        flushStaleOppositeSource(ifNeededFor: source, timestamp: timestamp)
+        scheduleSilenceFlush(for: source, lastAudioAt: timestamp)
 
-        let job = TranscriptionJob(
+        let chunk = TranscriptionChunk(
             source: source,
             samples: samples,
             timestamp: timestamp,
@@ -432,12 +480,17 @@ final class AppState {
         )
 
         Task {
-            await transcriptionCoordinator.submit(job)
+            await transcriptionCoordinator.submit(chunk)
+            let diagnostics = await transcriptionCoordinator.diagnostics(for: source)
+            await MainActor.run {
+                self.applyDiagnostics(diagnostics, for: source)
+            }
         }
     }
 
     private func handleTranscriptionOutput(_ output: TranscriptionOutput) {
         guard output.sessionID == listeningSessionID else { return }
+        applyDiagnostics(output.diagnostics, for: output.source)
 
         if let text = output.text {
             ingestTranscribedText(
@@ -445,12 +498,27 @@ final class AppState {
                 speaker: output.source.speaker,
                 timestamp: output.timestamp
             )
-        } else {
+            if output.flushReason.finalizesTurn {
+                liveTranscriptEntryIDs[output.source.speaker] = nil
+                suggestionEngine.ingestSpeechFragment(
+                    speaker: output.source.speaker,
+                    text: nil,
+                    timestamp: output.timestamp
+                )
+            }
+        } else if output.flushReason.finalizesTurn {
+            liveTranscriptEntryIDs[output.source.speaker] = nil
             suggestionEngine.ingestSpeechFragment(
                 speaker: output.source.speaker,
                 text: nil,
                 timestamp: output.timestamp
             )
+        }
+
+        if let whisperError = whisperService.error, !whisperError.isEmpty {
+            var state = captureState(for: output.source.speaker)
+            state.lastError = whisperError
+            setCaptureState(state, for: output.source.speaker)
         }
     }
 
@@ -458,6 +526,19 @@ final class AppState {
         var state = captureState(for: source.speaker)
         state.isCapturing = true
         state.lastAudioActivityAt = timestamp
+        state.lastError = nil
+        setCaptureState(state, for: source.speaker)
+    }
+
+    private func applyDiagnostics(
+        _ diagnostics: TranscriptionDiagnostics,
+        for source: TranscriptionSource
+    ) {
+        var state = captureState(for: source.speaker)
+        state.queueDepth = diagnostics.queueDepth
+        state.coalescedChunkCount = diagnostics.coalescedChunkCount
+        state.discardedWindowCount = diagnostics.discardedWindowCount
+        state.lastError = diagnostics.lastError ?? whisperService.error
         setCaptureState(state, for: source.speaker)
     }
 
@@ -482,17 +563,90 @@ final class AppState {
         state.lastAudioActivityAt = timestamp
         state.lastRecognizedText = text
         state.lastRecognizedAt = timestamp
+        state.lastError = nil
         setCaptureState(state, for: speaker)
 
-        let entry = transcriptManager.addEntry(
+        let entry = transcriptManager.upsertLiveEntry(
+            id: liveTranscriptEntryIDs[speaker],
             speaker: speaker,
             text: text,
             timestamp: timestamp
         )
+        liveTranscriptEntryIDs[speaker] = entry.id
         suggestionEngine.ingestSpeechFragment(
             speaker: speaker,
             text: entry.text,
             timestamp: entry.timestamp
         )
+    }
+
+    private func flushStaleOppositeSource(ifNeededFor source: TranscriptionSource, timestamp: Date) {
+        let oppositeSource: TranscriptionSource = source == .mic ? .system : .mic
+        let oppositeSpeaker = oppositeSource.speaker
+        let sessionID = listeningSessionID
+        guard let oppositeLastAudio = captureState(for: oppositeSpeaker).lastAudioActivityAt else { return }
+        guard timestamp.timeIntervalSince(oppositeLastAudio) >= Constants.Suggestion.TURN_PAUSE_SECONDS else {
+            return
+        }
+
+        Task {
+            guard await transcriptionCoordinator.hasBufferedAudio(for: oppositeSource) else { return }
+            await flushPendingTranscription(
+                source: oppositeSource,
+                sessionID: sessionID,
+                at: timestamp,
+                reason: .speakerSwitch
+            )
+        }
+    }
+
+    private func scheduleSilenceFlush(for source: TranscriptionSource, lastAudioAt: Date) {
+        silenceFlushTasks[source]?.cancel()
+        let dueDate = lastAudioAt.addingTimeInterval(Constants.Suggestion.TURN_PAUSE_SECONDS)
+        let sessionID = listeningSessionID
+
+        silenceFlushTasks[source] = Task { [weak self] in
+            let delay = max(0, dueDate.timeIntervalSinceNow + Constants.Suggestion.SIGNAL_REEVALUATION_GRACE_SECONDS)
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+
+            let shouldFlush = await MainActor.run { () -> Bool in
+                guard self.isListening else { return false }
+                guard self.listeningSessionID == sessionID else { return false }
+                return self.captureState(for: source.speaker).lastAudioActivityAt == lastAudioAt
+            }
+            guard shouldFlush else { return }
+
+            await self.flushPendingTranscription(
+                source: source,
+                sessionID: sessionID,
+                at: dueDate,
+                reason: .silence
+            )
+        }
+    }
+
+    private func flushPendingTranscription(
+        source: TranscriptionSource,
+        sessionID: UUID,
+        at timestamp: Date,
+        reason: TranscriptionFlushReason
+    ) async {
+        await transcriptionCoordinator.flush(
+            source: source,
+            sessionID: sessionID,
+            timestamp: timestamp,
+            reason: reason
+        )
+        let diagnostics = await transcriptionCoordinator.diagnostics(for: source)
+        applyDiagnostics(diagnostics, for: source)
+    }
+
+    private func cancelSilenceFlushTasks() {
+        for task in silenceFlushTasks.values {
+            task.cancel()
+        }
+        silenceFlushTasks.removeAll()
     }
 }
