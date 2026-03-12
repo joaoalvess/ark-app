@@ -81,13 +81,13 @@ struct SettingsView: View {
 
                 Slider(
                     value: $appState.settingsStore.settings.chunkDuration,
-                    in: 5...30,
-                    step: 5
+                    in: Constants.Suggestion.TRANSCRIPTION_WINDOW_MIN_SECONDS...Constants.Suggestion.TRANSCRIPTION_WINDOW_MAX_SECONDS,
+                    step: 1
                 ) {
-                    Text("Duracao do chunk: \(Int(appState.settingsStore.settings.chunkDuration))s")
+                    Text("Janela de transcricao: \(Int(appState.settingsStore.settings.chunkDuration))s")
                 }
 
-                Text("Mudanças na duração do chunk passam a valer na próxima escuta.")
+                Text("A janela de transcricao define quanto contexto o Whisper recebe por vez. Mudanças passam a valer na próxima escuta.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

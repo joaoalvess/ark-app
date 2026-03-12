@@ -222,12 +222,14 @@ struct TranscriptPanelView: View {
                     title: TranscriptEntry.Speaker.me.displayLabel,
                     status: appState.captureStatusText(for: .me),
                     preview: appState.lastTranscriptPreview(for: .me),
+                    diagnostics: appState.captureDiagnosticsText(for: .me),
                     color: .green
                 )
                 statusCard(
                     title: TranscriptEntry.Speaker.interviewer.displayLabel,
                     status: appState.captureStatusText(for: .interviewer),
                     preview: appState.lastTranscriptPreview(for: .interviewer),
+                    diagnostics: appState.captureDiagnosticsText(for: .interviewer),
                     color: .blue
                 )
             }
@@ -236,7 +238,13 @@ struct TranscriptPanelView: View {
         .padding(.vertical, 12)
     }
 
-    private func statusCard(title: String, status: String, preview: String, color: Color) -> some View {
+    private func statusCard(
+        title: String,
+        status: String,
+        preview: String,
+        diagnostics: String,
+        color: Color
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle()
@@ -254,6 +262,11 @@ struct TranscriptPanelView: View {
                 .font(.system(size: 11))
                 .lineLimit(2)
                 .foregroundStyle(.secondary)
+
+            Text(diagnostics)
+                .font(.system(size: 10))
+                .lineLimit(2)
+                .foregroundStyle(.tertiary)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
