@@ -22,10 +22,12 @@ final class TranscriptManager {
         entries.last { $0.speaker == .me }
     }
 
-    func addEntry(speaker: TranscriptEntry.Speaker, text: String) {
+    @discardableResult
+    func addEntry(speaker: TranscriptEntry.Speaker, text: String) -> TranscriptEntry {
         let entry = TranscriptEntry(speaker: speaker, text: text, timestamp: Date())
         entries.append(entry)
         trimOldEntries()
+        return entry
     }
 
     func clear() {
@@ -37,7 +39,4 @@ final class TranscriptManager {
         entries.removeAll { $0.timestamp < cutoff }
     }
 
-    func interviewTurnContext(trigger: InterviewTurnTrigger) -> InterviewTurnContext? {
-        InterviewAssistantEngine.makeContext(from: entries, trigger: trigger)
-    }
 }
