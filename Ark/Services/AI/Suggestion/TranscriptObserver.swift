@@ -109,9 +109,22 @@ struct PendingSignals: Sendable {
         followUp = nil
     }
 
-    func bestAvailable() -> SuggestionSignal? {
+    mutating func removeExpiredSignals(olderThan maxAge: TimeInterval, now: Date = Date()) {
+        if let question, now.timeIntervalSince(question.timestamp) > maxAge {
+            self.question = nil
+        }
+        if let stuck, now.timeIntervalSince(stuck.timestamp) > maxAge {
+            self.stuck = nil
+        }
+        if let followUp, now.timeIntervalSince(followUp.timestamp) > maxAge {
+            self.followUp = nil
+        }
+    }
+
+    func bestAvailable(now: Date = Date(), maxAge: TimeInterval) -> SuggestionSignal? {
         [stuck, question, followUp]
             .compactMap { $0 }
+            .filter { now.timeIntervalSince($0.timestamp) <= maxAge }
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority {
                     return lhs.priority > rhs.priority

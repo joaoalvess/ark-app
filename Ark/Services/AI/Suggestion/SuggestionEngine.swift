@@ -24,38 +24,8 @@ private struct PartialTurn {
     var text: String
 
     mutating func append(fragment: String, timestamp: Date) {
-        text = merge(existing: text, incoming: fragment)
+        text = TranscriptEntry.mergeText(existing: text, incoming: fragment)
         updatedAt = timestamp
-    }
-
-    private func merge(existing: String, incoming: String) -> String {
-        let trimmedIncoming = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedIncoming.isEmpty else { return existing }
-        guard !existing.isEmpty else { return trimmedIncoming }
-
-        if trimmedIncoming.hasPrefix(existing) {
-            return trimmedIncoming
-        }
-
-        if existing.hasSuffix(trimmedIncoming) {
-            return existing
-        }
-
-        let existingWords = existing.split(separator: " ").map(String.init)
-        let incomingWords = trimmedIncoming.split(separator: " ").map(String.init)
-        let maxOverlap = min(existingWords.count, incomingWords.count)
-
-        if maxOverlap > 0 {
-            for overlap in stride(from: maxOverlap, through: 1, by: -1) {
-                let existingSuffix = existingWords.suffix(overlap)
-                let incomingPrefix = incomingWords.prefix(overlap)
-                if Array(existingSuffix) == Array(incomingPrefix) {
-                    return (existingWords + incomingWords.dropFirst(overlap)).joined(separator: " ")
-                }
-            }
-        }
-
-        return "\(existing) \(trimmedIncoming)"
     }
 }
 
@@ -221,6 +191,7 @@ final class SuggestionEngine {
         guard settingsStore.settings.autoSuggest else { return }
         guard automaticSuggestionsEnabled else { return }
         pendingSignals.store(signal)
+        pendingSignals.removeExpiredSignals(olderThan: Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS)
         evaluatePendingSignals()
     }
 
@@ -230,6 +201,7 @@ final class SuggestionEngine {
         guard settingsStore.settings.autoSuggest else { return }
         guard automaticSuggestionsEnabled else { return }
         guard activeTask == nil else { return }
+        pendingSignals.removeExpiredSignals(olderThan: Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS)
         if !isDisplayProtected, displayedText.isEmpty == false {
             state = .idle
         }
@@ -248,7 +220,10 @@ final class SuggestionEngine {
             return
         }
 
-        guard let signal = pendingSignals.bestAvailable() else { return }
+        guard let signal = pendingSignals.bestAvailable(
+            now: Date(),
+            maxAge: Constants.Suggestion.SIGNAL_MAX_AGE_SECONDS
+        ) else { return }
         pendingSignals.remove(signal.kind)
         generate(request(for: signal), isManual: false)
     }
