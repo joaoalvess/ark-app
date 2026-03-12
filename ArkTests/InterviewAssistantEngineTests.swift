@@ -2,93 +2,47 @@ import XCTest
 @testable import Ark
 
 final class InterviewAssistantEngineTests: XCTestCase {
-    func testInterviewerQuestionBuildsAnswerQuestionContext() {
-        let entries = [
-            makeEntry(.interviewer, "Como funciona o React?")
-        ]
-
-        let context = InterviewAssistantEngine.makeContext(from: entries, trigger: .interviewerEntry)
-
-        XCTAssertEqual(context?.mode, .answerQuestion)
-        XCTAssertEqual(context?.interviewerPrompt, "Como funciona o React?")
-        XCTAssertEqual(context?.candidateResponse, "")
+    func testIsLikelyQuestionDetectsQuestionMark() {
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyQuestion("Como funciona o React?"))
     }
 
-    func testIncompleteCandidateResponseBuildsContinuationContext() {
-        let entries = [
-            makeEntry(.interviewer, "Como funciona o React?"),
-            makeEntry(.me, "O React é importante para o ecossistema JavaScript porque an")
-        ]
-
-        let context = InterviewAssistantEngine.makeContext(from: entries, trigger: .candidateSilence)
-
-        XCTAssertEqual(context?.mode, .continueCandidate)
-        XCTAssertTrue(context?.candidateResponseLikelyIncomplete ?? false)
-        XCTAssertEqual(context?.latestCandidateSegment, "O React é importante para o ecossistema JavaScript porque an")
+    func testIsLikelyQuestionDetectsQuestionPrefix() {
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyQuestion("Como você lida com estado global"))
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyQuestion("What is your experience with Swift"))
     }
 
-    func testStateLocksWhenCandidateStartsSpeaking() {
-        let turnID = UUID()
-
-        let nextState = InterviewAssistantEngine.stateAfterCandidateSpeech(
-            currentState: .live(turnID: turnID),
-            turnID: turnID
-        )
-
-        XCTAssertEqual(nextState, .locked(turnID: turnID))
+    func testIsLikelyQuestionReturnsFalseForStatements() {
+        XCTAssertFalse(InterviewAssistantEngine.isLikelyQuestion("Ok"))
+        XCTAssertFalse(InterviewAssistantEngine.isLikelyQuestion("Muito bem"))
     }
 
-    func testSilenceDoesNotRefreshWhileSuggestionIsStillLive() {
-        let turnID = UUID()
-        let context = InterviewTurnContext(
-            turnID: turnID,
-            interviewerPrompt: "Me explica closures em Swift",
-            candidateResponse: "Closures são blocos de código que você pode passar",
-            latestCandidateSegment: "Closures são blocos de código que você pode passar",
-            mode: .continueCandidate,
-            candidateResponseLikelyIncomplete: true
-        )
-
-        let shouldRefresh = InterviewAssistantEngine.shouldRequestSuggestionAfterCandidateSilence(
-            currentState: .live(turnID: turnID),
-            context: context
-        )
-
-        XCTAssertFalse(shouldRefresh)
+    func testShouldTriggerSuggestionForQuestion() {
+        XCTAssertTrue(InterviewAssistantEngine.shouldTriggerSuggestion(for: "Como funciona o React?"))
     }
 
-    func testSilenceRefreshesWhenSuggestionIsLockedAndAnswerIsIncomplete() {
-        let turnID = UUID()
-        let context = InterviewTurnContext(
-            turnID: turnID,
-            interviewerPrompt: "Me explica closures em Swift",
-            candidateResponse: "Closures são blocos de código que você pode passar",
-            latestCandidateSegment: "Closures são blocos de código que você pode passar",
-            mode: .continueCandidate,
-            candidateResponseLikelyIncomplete: true
-        )
-
-        let shouldRefresh = InterviewAssistantEngine.shouldRequestSuggestionAfterCandidateSilence(
-            currentState: .locked(turnID: turnID),
-            context: context
-        )
-
-        XCTAssertTrue(shouldRefresh)
+    func testShouldTriggerSuggestionForLongStatement() {
+        XCTAssertTrue(InterviewAssistantEngine.shouldTriggerSuggestion(for: "Vamos falar agora sobre a sua experiência"))
     }
 
-    func testNewQuestionCreatesANewTurnIdentifier() {
-        let firstQuestion = makeEntry(.interviewer, "Como funciona o React?")
-        let entries = [
-            firstQuestion,
-            makeEntry(.me, "O React é importante"),
-            makeEntry(.interviewer, "E como você lida com estado global?")
-        ]
+    func testShouldNotTriggerSuggestionForShortStatement() {
+        XCTAssertFalse(InterviewAssistantEngine.shouldTriggerSuggestion(for: "Ok"))
+    }
 
-        let context = InterviewAssistantEngine.makeContext(from: entries, trigger: .interviewerEntry)
+    func testIsLikelyIncompleteResponseDetectsEllipsis() {
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyIncompleteResponse("O React é importante porque..."))
+    }
 
-        XCTAssertNotNil(context)
-        XCTAssertNotEqual(context?.turnID, firstQuestion.id)
-        XCTAssertEqual(context?.interviewerPrompt, "E como você lida com estado global?")
+    func testIsLikelyIncompleteResponseDetectsFillers() {
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyIncompleteResponse("O React é importante para o ecossistema JavaScript porque an"))
+    }
+
+    func testIsLikelyIncompleteResponseDetectsDanglingConnectors() {
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyIncompleteResponse("O React é importante para"))
+        XCTAssertTrue(InterviewAssistantEngine.isLikelyIncompleteResponse("Eu uso hooks porque"))
+    }
+
+    func testIsLikelyIncompleteResponseReturnsFalseForComplete() {
+        XCTAssertFalse(InterviewAssistantEngine.isLikelyIncompleteResponse("O React é muito importante no ecossistema."))
     }
 
     private func makeEntry(
