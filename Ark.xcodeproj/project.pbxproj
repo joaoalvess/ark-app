@@ -29,6 +29,7 @@
 		A10020 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10020 /* ChatInputView.swift */; };
 		A10021 /* ChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10021 /* ChatMessageView.swift */; };
 		A10022 /* SuggestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10022 /* SuggestionView.swift */; };
+		A10038 /* AskPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10038 /* AskPanelView.swift */; };
 		A10023 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10023 /* SettingsView.swift */; };
 		A10024 /* AudioSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10024 /* AudioSetupView.swift */; };
 		A10025 /* APIConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10025 /* APIConfigView.swift */; };
@@ -44,6 +45,13 @@
 		AE16C9E12F5F046400C8B254 /* ArkAudioDriver.pkg in Resources */ = {isa = PBXBuildFile; fileRef = AE16C9E02F5F046400C8B254 /* ArkAudioDriver.pkg */; };
 		AEA3EA392F5F08000058890C /* AudioDriverManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA3EA382F5F08000058890C /* AudioDriverManager.swift */; };
 		AEA3EA3B2F5F081A0058890C /* AggregateDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA3EA3A2F5F081A0058890C /* AggregateDeviceManager.swift */; };
+		A10039 /* VoicePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10039 /* VoicePanelView.swift */; };
+		A10040 /* SuggestionsButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10040 /* SuggestionsButton.swift */; };
+		A10041 /* TranscriptObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10041 /* TranscriptObserver.swift */; };
+		A10042 /* SuggestionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10042 /* SuggestionEngine.swift */; };
+		A10043 /* QuestionObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10043 /* QuestionObserver.swift */; };
+		A10044 /* StuckObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10044 /* StuckObserver.swift */; };
+		A10045 /* FollowUpObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10045 /* FollowUpObserver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,6 +90,7 @@
 		B10020 /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
 		B10021 /* ChatMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageView.swift; sourceTree = "<group>"; };
 		B10022 /* SuggestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionView.swift; sourceTree = "<group>"; };
+		B10038 /* AskPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPanelView.swift; sourceTree = "<group>"; };
 		B10023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B10024 /* AudioSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSetupView.swift; sourceTree = "<group>"; };
 		B10025 /* APIConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfigView.swift; sourceTree = "<group>"; };
@@ -97,6 +106,13 @@
 		B10035 /* ArkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ArkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10036 /* InterviewAssistantEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterviewAssistantEngineTests.swift; sourceTree = "<group>"; };
 		B10037 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		B10039 /* VoicePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePanelView.swift; sourceTree = "<group>"; };
+		B10040 /* SuggestionsButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsButton.swift; sourceTree = "<group>"; };
+		B10041 /* TranscriptObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptObserver.swift; sourceTree = "<group>"; };
+		B10042 /* SuggestionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionEngine.swift; sourceTree = "<group>"; };
+		B10043 /* QuestionObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionObserver.swift; sourceTree = "<group>"; };
+		B10044 /* StuckObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StuckObserver.swift; sourceTree = "<group>"; };
+		B10045 /* FollowUpObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowUpObserver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -213,8 +229,21 @@
 				B10013 /* CodexCLIService.swift */,
 				B10034 /* InterviewAssistantEngine.swift */,
 				B10014 /* PromptBuilder.swift */,
+				G10021 /* Suggestion */,
 			);
 			path = AI;
+			sourceTree = "<group>";
+		};
+		G10021 /* Suggestion */ = {
+			isa = PBXGroup;
+			children = (
+				B10041 /* TranscriptObserver.swift */,
+				B10042 /* SuggestionEngine.swift */,
+				B10043 /* QuestionObserver.swift */,
+				B10044 /* StuckObserver.swift */,
+				B10045 /* FollowUpObserver.swift */,
+			);
+			path = Suggestion;
 			sourceTree = "<group>";
 		};
 		G10009 /* Persistence */ = {
@@ -242,6 +271,7 @@
 				B10016 /* FloatingBarView.swift */,
 				B10017 /* MicButton.swift */,
 				B10018 /* AskButton.swift */,
+				B10040 /* SuggestionsButton.swift */,
 			);
 			path = FloatingBar;
 			sourceTree = "<group>";
@@ -253,6 +283,8 @@
 				B10020 /* ChatInputView.swift */,
 				B10021 /* ChatMessageView.swift */,
 				B10022 /* SuggestionView.swift */,
+				B10038 /* AskPanelView.swift */,
+				B10039 /* VoicePanelView.swift */,
 			);
 			path = ChatPanel;
 			sourceTree = "<group>";
@@ -432,6 +464,7 @@
 				A10020 /* ChatInputView.swift in Sources */,
 				A10021 /* ChatMessageView.swift in Sources */,
 				A10022 /* SuggestionView.swift in Sources */,
+				A10038 /* AskPanelView.swift in Sources */,
 				A10023 /* SettingsView.swift in Sources */,
 				A10024 /* AudioSetupView.swift in Sources */,
 				A10025 /* APIConfigView.swift in Sources */,
@@ -441,6 +474,13 @@
 				A10031 /* AssistantProfile.swift in Sources */,
 				A10032 /* InterviewAssistantEngine.swift in Sources */,
 				AEA3EA392F5F08000058890C /* AudioDriverManager.swift in Sources */,
+				A10039 /* VoicePanelView.swift in Sources */,
+				A10040 /* SuggestionsButton.swift in Sources */,
+				A10041 /* TranscriptObserver.swift in Sources */,
+				A10042 /* SuggestionEngine.swift in Sources */,
+				A10043 /* QuestionObserver.swift in Sources */,
+				A10044 /* StuckObserver.swift in Sources */,
+				A10045 /* FollowUpObserver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
