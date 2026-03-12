@@ -98,43 +98,73 @@ final class CodexCLIService {
 
         try process.run()
 
-        var fullResponse = ""
-        var byteBuffer = Data()
-
-        let handle = stdoutPipe.fileHandleForReading
-        for try await byte in handle.bytes {
-            if byte == UInt8(ascii: "\n") {
-                if let line = String(data: byteBuffer, encoding: .utf8),
-                   let text = extractAgentMessage(from: line) {
-                    fullResponse += text
-                    onChunk(text)
-                }
-                byteBuffer.removeAll()
-            } else {
-                byteBuffer.append(byte)
-            }
+        // Read stderr in parallel
+        let stderrHandle = stderrPipe.fileHandleForReading
+        let stderrCollector = Task.detached { () -> String in
+            let data = stderrHandle.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? ""
         }
 
-        // Handle remaining buffer
-        if !byteBuffer.isEmpty {
-            if let line = String(data: byteBuffer, encoding: .utf8),
-               let text = extractAgentMessage(from: line) {
-                fullResponse += text
-                onChunk(text)
+        let streamResult: String = try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask { [self] in
+                var fullResponse = ""
+                var byteBuffer = Data()
+
+                let handle = stdoutPipe.fileHandleForReading
+                for try await byte in handle.bytes {
+                    if byte == UInt8(ascii: "\n") {
+                        if let line = String(data: byteBuffer, encoding: .utf8),
+                           let text = self.extractAgentMessage(from: line) {
+                            fullResponse += text
+                            onChunk(text)
+                        }
+                        byteBuffer.removeAll()
+                    } else {
+                        byteBuffer.append(byte)
+                    }
+                }
+
+                // Handle remaining buffer
+                if !byteBuffer.isEmpty {
+                    if let line = String(data: byteBuffer, encoding: .utf8),
+                       let text = self.extractAgentMessage(from: line) {
+                        fullResponse += text
+                        onChunk(text)
+                    }
+                }
+                return fullResponse
             }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: 120_000_000_000)
+                throw CodexError.failed(exit: -1, stderr: "Timeout: resposta demorou mais de 120s")
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
 
         process.waitUntilExit()
+        let stderr = await stderrCollector.value
 
-        if fullResponse.isEmpty {
-            let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let stderr = String(data: data, encoding: .utf8) ?? ""
+        #if DEBUG
+        if !stderr.isEmpty {
+            print("[CodexCLI] stderr: \(stderr.prefix(500))")
+        }
+        #endif
+
+        if streamResult.isEmpty {
             if process.terminationStatus != 0 {
                 throw CodexError.failed(exit: Int(process.terminationStatus), stderr: stderr)
             }
+            // Process succeeded but no agent_message found — return stderr as hint
+            if !stderr.isEmpty {
+                throw CodexError.failed(exit: 0, stderr: "Sem resposta do modelo. stderr: \(stderr)")
+            }
         }
 
-        return fullResponse
+        return streamResult
     }
     func testConnection() async -> Bool {
         do {
@@ -180,15 +210,40 @@ final class CodexCLIService {
 
         try process.run()
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        let result: (String, Int) = try await withThrowingTaskGroup(of: (String, Int).self) { group in
+            group.addTask {
+                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                return (stdout, Int(process.terminationStatus))
+            }
 
-        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-        return (stdout, Int(process.terminationStatus))
+            group.addTask {
+                try await Task.sleep(nanoseconds: 120_000_000_000)
+                throw CodexError.failed(exit: -1, stderr: "Timeout: resposta demorou mais de 120s")
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+
+        return result
     }
 
-    private func parseResponse(from stdout: String) -> String {
+    nonisolated private func parseResponse(from stdout: String) -> String {
         let lines = stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n")
+        // First pass: look for structured JSON agent_message
+        for line in lines.reversed() {
+            let lineStr = String(line)
+            guard let data = lineStr.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let item = json["item"] as? [String: Any],
+                  let type = item["type"] as? String, type == "agent_message",
+                  let text = item["text"] as? String else { continue }
+            return text
+        }
+        // Second pass: try full extractAgentMessage (with fallbacks)
         for line in lines.reversed() {
             if let text = extractAgentMessage(from: String(line)) {
                 return text
@@ -197,24 +252,57 @@ final class CodexCLIService {
         return stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func extractAgentMessage(from line: String) -> String? {
+    nonisolated private func extractAgentMessage(from line: String) -> String? {
         guard let data = line.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            // Not JSON — CLI banners/spinners, discard
+            #if DEBUG
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                print("[CodexCLI] Skipping non-JSON line: \(trimmed.prefix(100))")
+            }
+            #endif
             return nil
         }
 
-        // Codex exec --json: item.type == "agent_message" -> item.text
+        // Codex exec --json: {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
         if let item = json["item"] as? [String: Any],
            let type = item["type"] as? String, type == "agent_message",
            let text = item["text"] as? String {
             return text
         }
 
-        // Fallbacks
+        // Streaming delta events: {"type":"agent_message.delta","delta":"..."}
+        if let type = json["type"] as? String, type.contains("delta"),
+           let delta = json["delta"] as? String {
+            return delta
+        }
+
+        // OpenAI-style content array: {"item":{"content":[{"type":"text","text":"..."}]}}
+        if let item = json["item"] as? [String: Any],
+           let content = item["content"] as? [[String: Any]],
+           let first = content.first,
+           let text = first["text"] as? String {
+            return text
+        }
+
+        // Fallbacks for alternative formats
         if let output = json["output"] as? String { return output }
         if let result = json["result"] as? String { return result }
         if let text = json["text"] as? String { return text }
+        if let content = json["content"] as? String { return content }
+        if let message = json["message"] as? String { return message }
 
+        // Skip known control events silently
+        if let type = json["type"] as? String,
+           ["thread.started", "turn.started", "turn.completed", "item.completed"].contains(type) {
+            // item.completed without agent_message (e.g. reasoning) — skip
+            return nil
+        }
+
+        #if DEBUG
+        print("[CodexCLI] Unrecognized JSON line: \(line.prefix(200))")
+        #endif
         return nil
     }
 
