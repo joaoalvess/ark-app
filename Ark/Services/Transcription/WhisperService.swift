@@ -2,7 +2,7 @@ import Foundation
 import Observation
 @preconcurrency import WhisperKit
 
-enum TranscriptionSource: String, Sendable {
+enum TranscriptionSource: String, Sendable, CaseIterable {
     case mic
     case system
 
@@ -16,11 +16,40 @@ enum TranscriptionSource: String, Sendable {
     }
 }
 
+enum TranscriptionFlushReason: String, Sendable {
+    case stride
+    case silence
+    case speakerSwitch
+    case sessionEnd
+
+    var finalizesTurn: Bool {
+        self != .stride
+    }
+}
+
+struct TranscriptionChunk: Sendable {
+    let source: TranscriptionSource
+    let samples: [Float]
+    let timestamp: Date
+    let sessionID: UUID
+}
+
 struct TranscriptionJob: Sendable {
     let source: TranscriptionSource
     let samples: [Float]
     let timestamp: Date
     let sessionID: UUID
+    let sequence: UInt64
+    let windowStart: Date
+    let windowEnd: Date
+    let flushReason: TranscriptionFlushReason
+}
+
+struct TranscriptionDiagnostics: Equatable, Sendable {
+    var queueDepth = 0
+    var coalescedChunkCount = 0
+    var discardedWindowCount = 0
+    var lastError: String?
 }
 
 struct TranscriptionOutput: Sendable {
@@ -28,6 +57,11 @@ struct TranscriptionOutput: Sendable {
     let timestamp: Date
     let sessionID: UUID
     let text: String?
+    let sequence: UInt64
+    let windowStart: Date
+    let windowEnd: Date
+    let flushReason: TranscriptionFlushReason
+    let diagnostics: TranscriptionDiagnostics
 }
 
 actor TranscriptionCoordinator {
@@ -35,18 +69,38 @@ actor TranscriptionCoordinator {
     private let continuation: AsyncStream<TranscriptionOutput>.Continuation
     private let perform: @Sendable (TranscriptionJob) async -> String?
 
-    private struct QueuedJob: Sendable {
-        let order: UInt64
-        let job: TranscriptionJob
+    private struct DeferredFlush: Sendable {
+        let timestamp: Date
+        let sessionID: UUID
+        let reason: TranscriptionFlushReason
     }
 
-    private var pendingJobs: [TranscriptionSource: QueuedJob] = [:]
-    private var nextOrder: UInt64 = 0
-    private var processingTask: Task<Void, Never>?
-    private(set) var droppedPendingJobs = 0
+    private struct SourceState: Sendable {
+        var rawBuffer: [Float] = []
+        var bufferStartTime: Date?
+        var lastChunkEndTime: Date?
+        var queue: [TranscriptionJob] = []
+        var nextSequence: UInt64 = 0
+        var coalescedChunkCount = 0
+        var discardedWindowCount = 0
+        var deferredFlush: DeferredFlush?
+    }
 
-    init(perform: @escaping @Sendable (TranscriptionJob) async -> String?) {
+    private var strideDuration = Constants.Suggestion.ANALYSIS_CHUNK_DURATION
+    private var windowDuration = Constants.chunkDuration
+    private var sourceStates = Dictionary(uniqueKeysWithValues: TranscriptionSource.allCases.map {
+        ($0, SourceState())
+    })
+    private var processingTasks: [TranscriptionSource: Task<Void, Never>] = [:]
+
+    init(
+        windowDuration: TimeInterval = Constants.chunkDuration,
+        strideDuration: TimeInterval = Constants.Suggestion.ANALYSIS_CHUNK_DURATION,
+        perform: @escaping @Sendable (TranscriptionJob) async -> String?
+    ) {
         self.perform = perform
+        self.windowDuration = windowDuration
+        self.strideDuration = strideDuration
 
         var streamContinuation: AsyncStream<TranscriptionOutput>.Continuation?
         self.results = AsyncStream { continuation in
@@ -55,45 +109,241 @@ actor TranscriptionCoordinator {
         self.continuation = streamContinuation!
     }
 
-    func submit(_ job: TranscriptionJob) {
-        let queuedJob = QueuedJob(order: nextOrder, job: job)
-        nextOrder += 1
+    func configure(windowDuration: TimeInterval, strideDuration: TimeInterval) {
+        self.windowDuration = min(
+            max(windowDuration, Constants.Suggestion.TRANSCRIPTION_WINDOW_MIN_SECONDS),
+            Constants.Suggestion.TRANSCRIPTION_WINDOW_MAX_SECONDS
+        )
+        self.strideDuration = max(Constants.Suggestion.ANALYSIS_CHUNK_DURATION, strideDuration)
+    }
 
-        if pendingJobs.updateValue(queuedJob, forKey: job.source) != nil {
-            droppedPendingJobs += 1
+    func submit(_ chunk: TranscriptionChunk) {
+        var state = sourceStates[chunk.source] ?? SourceState()
+        let chunkDuration = Double(chunk.samples.count) / Constants.sampleRate
+
+        if state.bufferStartTime == nil {
+            state.bufferStartTime = chunk.timestamp.addingTimeInterval(-chunkDuration)
+        } else {
+            state.coalescedChunkCount += 1
         }
 
-        guard processingTask == nil else { return }
-        processingTask = Task { await processLoop() }
+        state.rawBuffer.append(contentsOf: chunk.samples)
+        state.lastChunkEndTime = chunk.timestamp
+        state.deferredFlush = nil
+
+        enqueueStrideWindows(for: chunk.source, sessionID: chunk.sessionID, state: &state)
+        sourceStates[chunk.source] = state
+        startProcessorIfNeeded(for: chunk.source)
+    }
+
+    func flush(
+        source: TranscriptionSource,
+        sessionID: UUID,
+        timestamp: Date,
+        reason: TranscriptionFlushReason
+    ) {
+        var state = sourceStates[source] ?? SourceState()
+
+        if let bufferStartTime = state.bufferStartTime, !state.rawBuffer.isEmpty {
+            let job = TranscriptionJob(
+                source: source,
+                samples: state.rawBuffer,
+                timestamp: timestamp,
+                sessionID: sessionID,
+                sequence: state.nextSequence,
+                windowStart: bufferStartTime,
+                windowEnd: timestamp,
+                flushReason: reason
+            )
+            state.nextSequence += 1
+            state.rawBuffer.removeAll(keepingCapacity: true)
+            state.bufferStartTime = nil
+            state.lastChunkEndTime = nil
+            enqueue(job, into: &state)
+            sourceStates[source] = state
+            startProcessorIfNeeded(for: source)
+            return
+        }
+
+        if state.queue.isEmpty, processingTasks[source] == nil {
+            state.lastChunkEndTime = nil
+            sourceStates[source] = state
+            emitNilOutput(
+                source: source,
+                sessionID: sessionID,
+                timestamp: timestamp,
+                reason: reason,
+                diagnostics: diagnostics(from: state)
+            )
+            return
+        }
+
+        state.deferredFlush = DeferredFlush(timestamp: timestamp, sessionID: sessionID, reason: reason)
+        state.lastChunkEndTime = nil
+        sourceStates[source] = state
+    }
+
+    func diagnostics(for source: TranscriptionSource) -> TranscriptionDiagnostics {
+        diagnostics(from: sourceStates[source] ?? SourceState())
+    }
+
+    func hasBufferedAudio(for source: TranscriptionSource) -> Bool {
+        let state = sourceStates[source] ?? SourceState()
+        return !state.rawBuffer.isEmpty || !state.queue.isEmpty || state.deferredFlush != nil
     }
 
     func reset() {
-        pendingJobs.removeAll()
-        droppedPendingJobs = 0
+        for task in processingTasks.values {
+            task.cancel()
+        }
+        processingTasks.removeAll()
+        sourceStates = Dictionary(uniqueKeysWithValues: TranscriptionSource.allCases.map {
+            ($0, SourceState())
+        })
     }
 
-    private func processLoop() async {
-        while let queuedJob = dequeueNextJob() {
-            let text = await perform(queuedJob.job)
+    private func enqueueStrideWindows(
+        for source: TranscriptionSource,
+        sessionID: UUID,
+        state: inout SourceState
+    ) {
+        let windowSampleCount = max(1, Int(windowDuration * Constants.sampleRate))
+        let strideSampleCount = max(1, Int(strideDuration * Constants.sampleRate))
+
+        while state.rawBuffer.count >= windowSampleCount, let bufferStartTime = state.bufferStartTime {
+            let samples = Array(state.rawBuffer.prefix(windowSampleCount))
+            let windowEnd = bufferStartTime.addingTimeInterval(Double(samples.count) / Constants.sampleRate)
+            let job = TranscriptionJob(
+                source: source,
+                samples: samples,
+                timestamp: windowEnd,
+                sessionID: sessionID,
+                sequence: state.nextSequence,
+                windowStart: bufferStartTime,
+                windowEnd: windowEnd,
+                flushReason: .stride
+            )
+            state.nextSequence += 1
+            enqueue(job, into: &state)
+
+            let consumedCount = min(strideSampleCount, state.rawBuffer.count)
+            state.rawBuffer.removeFirst(consumedCount)
+            if state.rawBuffer.isEmpty {
+                state.bufferStartTime = nil
+            } else {
+                state.bufferStartTime = bufferStartTime.addingTimeInterval(
+                    Double(consumedCount) / Constants.sampleRate
+                )
+            }
+        }
+    }
+
+    private func enqueue(_ job: TranscriptionJob, into state: inout SourceState) {
+        if let lastJob = state.queue.last,
+           lastJob.sessionID == job.sessionID,
+           job.windowStart <= lastJob.windowStart,
+           job.windowEnd >= lastJob.windowEnd {
+            state.queue[state.queue.count - 1] = job
+            state.discardedWindowCount += 1
+            return
+        }
+
+        state.queue.append(job)
+    }
+
+    private func startProcessorIfNeeded(for source: TranscriptionSource) {
+        guard processingTasks[source] == nil else { return }
+        processingTasks[source] = Task { await processLoop(for: source) }
+    }
+
+    private func processLoop(for source: TranscriptionSource) async {
+        while !Task.isCancelled {
+            guard let job = dequeueJob(for: source) else { break }
+
+            let text = await perform(job)
+            guard !Task.isCancelled else { break }
+
+            let state = sourceStates[source] ?? SourceState()
             continuation.yield(
                 TranscriptionOutput(
-                    source: queuedJob.job.source,
-                    timestamp: queuedJob.job.timestamp,
-                    sessionID: queuedJob.job.sessionID,
-                    text: text
+                    source: source,
+                    timestamp: job.timestamp,
+                    sessionID: job.sessionID,
+                    text: text,
+                    sequence: job.sequence,
+                    windowStart: job.windowStart,
+                    windowEnd: job.windowEnd,
+                    flushReason: job.flushReason,
+                    diagnostics: diagnostics(from: state)
                 )
             )
+
+            await emitDeferredFlushIfNeeded(for: source)
         }
 
-        processingTask = nil
+        processingTasks[source] = nil
+        if let state = sourceStates[source], !state.queue.isEmpty {
+            startProcessorIfNeeded(for: source)
+        }
     }
 
-    private func dequeueNextJob() -> QueuedJob? {
-        guard let queuedJob = pendingJobs.values.min(by: { $0.order < $1.order }) else {
+    private func dequeueJob(for source: TranscriptionSource) -> TranscriptionJob? {
+        guard var state = sourceStates[source], !state.queue.isEmpty else {
             return nil
         }
-        pendingJobs[queuedJob.job.source] = nil
-        return queuedJob
+
+        let job = state.queue.removeFirst()
+        sourceStates[source] = state
+        return job
+    }
+
+    private func emitDeferredFlushIfNeeded(for source: TranscriptionSource) async {
+        guard var state = sourceStates[source] else { return }
+        guard state.rawBuffer.isEmpty, state.queue.isEmpty, let deferredFlush = state.deferredFlush else {
+            return
+        }
+
+        state.deferredFlush = nil
+        sourceStates[source] = state
+
+        emitNilOutput(
+            source: source,
+            sessionID: deferredFlush.sessionID,
+            timestamp: deferredFlush.timestamp,
+            reason: deferredFlush.reason,
+            diagnostics: diagnostics(from: state)
+        )
+    }
+
+    private func diagnostics(from state: SourceState) -> TranscriptionDiagnostics {
+        TranscriptionDiagnostics(
+            queueDepth: state.queue.count,
+            coalescedChunkCount: state.coalescedChunkCount,
+            discardedWindowCount: state.discardedWindowCount,
+            lastError: nil
+        )
+    }
+
+    private func emitNilOutput(
+        source: TranscriptionSource,
+        sessionID: UUID,
+        timestamp: Date,
+        reason: TranscriptionFlushReason,
+        diagnostics: TranscriptionDiagnostics
+    ) {
+        continuation.yield(
+            TranscriptionOutput(
+                source: source,
+                timestamp: timestamp,
+                sessionID: sessionID,
+                text: nil,
+                sequence: 0,
+                windowStart: timestamp,
+                windowEnd: timestamp,
+                flushReason: reason,
+                diagnostics: diagnostics
+            )
+        )
     }
 }
 
@@ -161,10 +411,14 @@ final class WhisperService: @unchecked Sendable {
         guard isModelLoaded else { return nil }
 
         do {
-            return try await runtime.transcribe(
+            let text = try await runtime.transcribe(
                 audioSamples: audioSamples,
                 language: Constants.whisperLanguage
             )
+            await MainActor.run {
+                self.error = nil
+            }
+            return text
         } catch {
             await MainActor.run {
                 self.error = "Transcription failed: \(error.localizedDescription)"
