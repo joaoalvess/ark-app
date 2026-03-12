@@ -6,7 +6,7 @@ struct FloatingBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Pill bar
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 // Settings button
                 SettingsLink {
                     ZStack {
@@ -22,31 +22,48 @@ struct FloatingBarView: View {
 
                 Spacer()
 
-                // Ask/Hide button
-                AskButton(isChatVisible: appState.isChatVisible) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        appState.toggleChat()
+                // Ask/Suggestions button
+                if appState.isListening {
+                    SuggestionsButton(isChatVisible: appState.isChatVisible) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            appState.toggleChat()
+                        }
+                    }
+                } else {
+                    AskButton(isChatVisible: appState.isChatVisible) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            appState.toggleChat()
+                        }
                     }
                 }
 
                 Spacer()
 
                 // Mic button
-                MicButton(isListening: appState.isListening) {
+                MicButton(isListening: appState.isListening, isLoading: appState.isMicLoading) {
                     Task { await appState.toggleListening() }
                 }
             }
-            .padding(.horizontal, 12)
-            .frame(width: Constants.UI.barWidth, height: Constants.UI.barHeight)
+            .padding(.horizontal, 8)
+            .frame(height: Constants.UI.barHeight)
+            .frame(width: appState.isListening ? Constants.UI.barWidthListening : Constants.UI.barWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.isListening)
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
 
-            // Chat panel
+            // Panel
             if appState.isChatVisible {
-                ChatPanelView(appState: appState)
-                    .frame(width: Constants.UI.chatPanelWidth, height: Constants.UI.chatPanelHeight)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .padding(.top, 8)
+                if appState.isListening {
+                    VoicePanelView(appState: appState)
+                        .frame(width: Constants.UI.chatPanelWidth)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, 8)
+                } else {
+                    AskPanelView(appState: appState)
+                        .frame(width: Constants.UI.chatPanelWidth)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, 8)
+                }
             }
         }
     }

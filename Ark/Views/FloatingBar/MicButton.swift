@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MicButton: View {
     let isListening: Bool
+    let isLoading: Bool
     let action: () -> Void
 
     var body: some View {
@@ -10,9 +11,15 @@ struct MicButton: View {
                 Circle()
                     .fill(Color.white.opacity(0.08))
 
-                Image(systemName: isListening ? "mic.fill" : "mic")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isListening ? .red : .primary)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.secondary)
+                } else {
+                    Image(systemName: isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(isListening ? .red : .primary)
+                }
 
                 if isListening {
                     PulsingIndicator(color: .red)
@@ -21,6 +28,7 @@ struct MicButton: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(isLoading)
         .frame(width: Constants.UI.iconButtonSize, height: Constants.UI.iconButtonSize)
     }
 }

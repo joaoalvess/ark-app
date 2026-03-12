@@ -8,8 +8,9 @@ final class AppState {
     var audioManager = AudioSessionManager()
     var whisperService = WhisperService()
     var transcriptManager = TranscriptManager()
-    var codexService = CodexCLIService()
-    var settingsStore = SettingsStore()
+    var codexService: CodexCLIService
+    var settingsStore: SettingsStore
+    let suggestionEngine: SuggestionEngine
 
     // UI State
     var isListening = false
@@ -17,16 +18,34 @@ final class AppState {
     var messages: [ChatMessage] = []
     var currentInput = ""
     var isProcessing = false
-    var isSuggestionProcessing = false
     var errorMessage: String?
+    var askDisplayedText = ""
+    var isAskStreaming = false
+    var askContentHeight: CGFloat = 0
 
-    private var activeSuggestionMessageID: UUID?
-    private var interviewSuggestionState: InterviewSuggestionState = .idle
-    private var suggestionTask: Task<Void, Never>?
-    private var suggestionRequestID = 0
-    private let suggestionDebounceNanoseconds: UInt64 = 250_000_000
+    var isMicLoading = false
+
+    private var askBuffer = ""
+    private var askRevealTask: Task<Void, Never>?
+    private var consecutiveMicChunks = 0
+
+    // Session history (cleared on hide)
+    private var askSessionHistory: [(question: String, answer: String)] = []
 
     init() {
+        let codex = CodexCLIService()
+        let settings = SettingsStore()
+        self.codexService = codex
+        self.settingsStore = settings
+        self.suggestionEngine = SuggestionEngine(codexService: codex, settingsStore: settings)
+
+        let questionObserver = QuestionObserver(settingsStore: settings)
+        let stuckObserver = StuckObserver(settingsStore: settings)
+        let followUpObserver = FollowUpObserver(settingsStore: settings)
+        suggestionEngine.register(questionObserver)
+        suggestionEngine.register(stuckObserver)
+        suggestionEngine.register(followUpObserver)
+
         setupAudioCallbacks()
     }
 
@@ -55,6 +74,16 @@ final class AppState {
     }
 
     func toggleChat() {
+        if isChatVisible {
+            // Hiding — clear session
+            askSessionHistory.removeAll()
+            askDisplayedText = ""
+            askBuffer = ""
+            askContentHeight = 0
+            isAskStreaming = false
+            askRevealTask?.cancel()
+            suggestionEngine.reset()
+        }
         isChatVisible.toggle()
     }
 
@@ -103,19 +132,72 @@ final class AppState {
         isProcessing = false
     }
 
-    func requestSuggestion() async {
-        guard settingsStore.settings.autoSuggest else { return }
+    func sendAskMessage() async {
+        let text = currentInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isProcessing else { return }
 
-        let profile = settingsStore.settings.assistantProfile
-        switch profile {
-        case .techInterview:
-            guard let context = transcriptManager.interviewTurnContext(trigger: .interviewerEntry) else { return }
-            scheduleInterviewSuggestion(for: context)
+        currentInput = ""
+        askRevealTask?.cancel()
+        askBuffer = ""
+        askDisplayedText = ""
+        askContentHeight = 0
+        isAskStreaming = true
+        isProcessing = true
+        errorMessage = nil
+        defer { isProcessing = false }
 
-        case .generalist, .code:
-            let transcript = transcriptManager.recentTranscript
-            guard !transcript.isEmpty else { return }
-            scheduleGenericSuggestion(profile: profile, transcript: transcript)
+        startAskRevealLoop()
+
+        let transcript = transcriptManager.formattedTranscript
+        let prompt = PromptBuilder.buildAskPrompt(transcript: transcript, question: text, history: askSessionHistory)
+
+        do {
+            let response = try await codexService.chatStream(
+                systemPrompt: PromptBuilder.askSystemPrompt(),
+                userMessage: prompt,
+                model: settingsStore.settings.aiModel,
+                reasoningLevel: settingsStore.settings.aiReasoningLevel,
+                onChunk: { [weak self] (chunk: String) in
+                    Task { @MainActor in
+                        self?.askBuffer += chunk
+                    }
+                }
+            )
+
+            // Use response as source-of-truth (eliminates onChunk race condition)
+            askBuffer = response
+            askSessionHistory.append((question: text, answer: response))
+        } catch {
+            askBuffer = "Erro: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func startAskRevealLoop() {
+        askRevealTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+
+                if self.askDisplayedText.count < self.askBuffer.count {
+                    // Reveal next chunk of characters
+                    let remaining = self.askBuffer.count - self.askDisplayedText.count
+                    let charsToReveal = min(max(remaining / 4, 1), 3)
+                    let endIndex = self.askBuffer.index(
+                        self.askBuffer.startIndex,
+                        offsetBy: self.askDisplayedText.count + charsToReveal
+                    )
+                    self.askDisplayedText = String(self.askBuffer[..<endIndex])
+                    try? await Task.sleep(nanoseconds: 15_000_000) // ~15ms per tick
+                } else if !self.isProcessing && self.askDisplayedText.count >= self.askBuffer.count {
+                    // Done streaming and all text revealed
+                    self.askDisplayedText = self.askBuffer
+                    self.isAskStreaming = false
+                    return
+                } else {
+                    // Waiting for more chunks
+                    try? await Task.sleep(nanoseconds: 30_000_000)
+                }
+            }
         }
     }
 
@@ -132,25 +214,42 @@ final class AppState {
             return
         }
 
+        isMicLoading = true
+
         do {
             if !whisperService.isModelLoaded {
                 await whisperService.loadModel(name: settingsStore.settings.whisperModel)
             }
 
-            resetSuggestionPipeline(clearMessageReference: true)
+            suggestionEngine.reset()
             audioManager.configure(chunkDuration: settingsStore.settings.chunkDuration)
             try audioManager.startListening(deviceID: settingsStore.settings.inputDeviceID)
             isListening = true
             isChatVisible = true
+
+            // Diagnóstico: verificar se system audio está a funcionar
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard let self, self.isListening else { return }
+                if self.transcriptManager.entries.filter({ $0.speaker == .interviewer }).isEmpty {
+                    print("[Ark] WARNING: 10s sem audio do sistema. Verificar BlackHole.")
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+
+        isMicLoading = false
     }
 
     private func stopListening() {
         audioManager.stopListening()
-        resetSuggestionPipeline(clearMessageReference: true)
+        suggestionEngine.reset()
+        consecutiveMicChunks = 0
         isListening = false
+
+        // Fechar o chat panel ao sair do voice mode
+        isChatVisible = false
     }
 
     private func setupAudioCallbacks() {
@@ -171,199 +270,36 @@ final class AppState {
 
     private func processMicrophoneChunk(_ samples: [Float]) async {
         if let text = await whisperService.transcribe(audioSamples: samples) {
-            transcriptManager.addEntry(speaker: .me, text: text)
-            await handleCandidateTranscript()
+            consecutiveMicChunks += 1
+            // Only clear after sustained speech (2+ chunks), not a brief word
+            // But don't clear if user is reading the suggestion aloud (echo)
+            if consecutiveMicChunks >= 2,
+               !suggestionEngine.isEchoingSuggestion(text),
+               !suggestionEngine.isUserCommandActive {
+                suggestionEngine.clearDisplay()
+            }
+            let entry = transcriptManager.addEntry(speaker: .me, text: text)
+            suggestionEngine.feedEntry(entry, allEntries: transcriptManager.entries)
         } else {
-            await handleCandidateSilence()
+            consecutiveMicChunks = 0
+            suggestionEngine.feedSilence(allEntries: transcriptManager.entries)
         }
     }
 
     private func processSystemChunk(_ samples: [Float]) async {
-        guard let text = await whisperService.transcribe(audioSamples: samples) else { return }
-        transcriptManager.addEntry(speaker: .interviewer, text: text)
-        await handleInterviewerTranscript()
-    }
-
-    private func handleInterviewerTranscript() async {
-        guard settingsStore.settings.autoSuggest else { return }
-
-        let profile = settingsStore.settings.assistantProfile
-        switch profile {
-        case .techInterview:
-            guard let context = transcriptManager.interviewTurnContext(trigger: .interviewerEntry) else { return }
-            scheduleInterviewSuggestion(for: context)
-
-        case .generalist, .code:
-            let transcript = transcriptManager.recentTranscript
-            guard !transcript.isEmpty else { return }
-            scheduleGenericSuggestion(profile: profile, transcript: transcript)
-        }
-    }
-
-    private func handleCandidateTranscript() async {
-        guard settingsStore.settings.autoSuggest,
-              settingsStore.settings.assistantProfile == .techInterview,
-              let turnID = transcriptManager.lastInterviewerEntry?.id else {
+        #if DEBUG
+        print("[Ark] processSystemChunk called (\(samples.count) samples)")
+        #endif
+        guard let text = await whisperService.transcribe(audioSamples: samples) else {
+            #if DEBUG
+            print("[Ark] processSystemChunk: transcription returned nil")
+            #endif
             return
         }
-
-        let nextState = InterviewAssistantEngine.stateAfterCandidateSpeech(
-            currentState: interviewSuggestionState,
-            turnID: turnID
-        )
-        guard nextState != interviewSuggestionState else { return }
-
-        cancelSuggestionTask()
-        interviewSuggestionState = nextState
-    }
-
-    private func handleCandidateSilence() async {
-        guard settingsStore.settings.autoSuggest,
-              settingsStore.settings.assistantProfile == .techInterview,
-              let context = transcriptManager.interviewTurnContext(trigger: .candidateSilence) else {
-            return
-        }
-
-        guard InterviewAssistantEngine.shouldRequestSuggestionAfterCandidateSilence(
-            currentState: interviewSuggestionState,
-            context: context
-        ) else {
-            return
-        }
-
-        scheduleInterviewSuggestion(for: context)
-    }
-
-    private func scheduleInterviewSuggestion(for context: InterviewTurnContext) {
-        cancelSuggestionTask()
-
-        interviewSuggestionState = .live(turnID: context.turnID)
-        isSuggestionProcessing = true
-        let requestID = suggestionRequestID
-        let model = settingsStore.settings.aiModel
-        let reasoningLevel = settingsStore.settings.aiReasoningLevel
-        let prompt = PromptBuilder.buildInterviewSuggestionPrompt(context: context)
-        let debounceNanoseconds = suggestionDebounceNanoseconds
-
-        suggestionTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                try await Task.sleep(nanoseconds: debounceNanoseconds)
-                guard !Task.isCancelled else { return }
-
-                let response = try await self.codexService.chat(
-                    systemPrompt: PromptBuilder.systemPrompt(for: .techInterview),
-                    userMessage: prompt,
-                    model: model,
-                    reasoningLevel: reasoningLevel
-                )
-                guard !Task.isCancelled else { return }
-
-                self.applyInterviewSuggestion(response, requestID: requestID, context: context)
-            } catch {
-                self.handleSuggestionError(error, requestID: requestID)
-            }
-        }
-    }
-
-    private func scheduleGenericSuggestion(profile: AssistantProfile, transcript: String) {
-        cancelSuggestionTask()
-
-        isSuggestionProcessing = true
-        let requestID = suggestionRequestID
-        let model = settingsStore.settings.aiModel
-        let reasoningLevel = settingsStore.settings.aiReasoningLevel
-        let prompt = PromptBuilder.buildSuggestionPrompt(profile: profile, transcript: transcript)
-        let debounceNanoseconds = suggestionDebounceNanoseconds
-
-        suggestionTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                try await Task.sleep(nanoseconds: debounceNanoseconds)
-                guard !Task.isCancelled else { return }
-
-                let response = try await self.codexService.chat(
-                    systemPrompt: PromptBuilder.systemPrompt(for: profile),
-                    userMessage: prompt,
-                    model: model,
-                    reasoningLevel: reasoningLevel
-                )
-                guard !Task.isCancelled else { return }
-
-                self.applyGenericSuggestion(response, requestID: requestID)
-            } catch {
-                self.handleSuggestionError(error, requestID: requestID)
-            }
-        }
-    }
-
-    private func applyInterviewSuggestion(
-        _ response: String,
-        requestID: Int,
-        context: InterviewTurnContext
-    ) {
-        guard requestID == suggestionRequestID else { return }
-
-        suggestionTask = nil
-        isSuggestionProcessing = false
-
-        guard case .live(context.turnID) = interviewSuggestionState else { return }
-
-        let cleanedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedResponse.isEmpty else { return }
-
-        upsertActiveSuggestion(with: cleanedResponse)
-    }
-
-    private func applyGenericSuggestion(_ response: String, requestID: Int) {
-        guard requestID == suggestionRequestID else { return }
-
-        suggestionTask = nil
-        isSuggestionProcessing = false
-
-        let cleanedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedResponse.isEmpty else { return }
-
-        messages.append(.suggestion(cleanedResponse))
-    }
-
-    private func handleSuggestionError(_ error: Error, requestID: Int) {
-        guard requestID == suggestionRequestID else { return }
-        guard !(error is CancellationError) else { return }
-
-        suggestionTask = nil
-        isSuggestionProcessing = false
-        errorMessage = error.localizedDescription
-    }
-
-    private func upsertActiveSuggestion(with text: String) {
-        if let activeSuggestionMessageID,
-           let index = messages.firstIndex(where: { $0.id == activeSuggestionMessageID }) {
-            messages[index].text = text
-            messages[index].isStreaming = false
-            return
-        }
-
-        let message = ChatMessage.suggestion(text)
-        messages.append(message)
-        activeSuggestionMessageID = message.id
-    }
-
-    private func cancelSuggestionTask() {
-        suggestionTask?.cancel()
-        suggestionTask = nil
-        suggestionRequestID += 1
-        isSuggestionProcessing = false
-    }
-
-    private func resetSuggestionPipeline(clearMessageReference: Bool) {
-        cancelSuggestionTask()
-        interviewSuggestionState = .idle
-
-        if clearMessageReference {
-            activeSuggestionMessageID = nil
-        }
+        #if DEBUG
+        print("[Ark] System transcript: \(text.prefix(80))")
+        #endif
+        let entry = transcriptManager.addEntry(speaker: .interviewer, text: text)
+        suggestionEngine.feedEntry(entry, allEntries: transcriptManager.entries)
     }
 }

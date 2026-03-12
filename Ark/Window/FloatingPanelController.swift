@@ -83,6 +83,20 @@ final class FloatingPanelController {
         panel?.resignKey()
     }
 
+    func showAsk(responseHeight: CGFloat) {
+        let width = Constants.UI.chatPanelWidth
+        let height = Constants.UI.barHeight + 8 + Constants.UI.inputBarHeight + responseHeight
+        resize(width: width, height: height)
+        makeKey()
+    }
+
+    func showVoice(responseHeight: CGFloat) {
+        let width = Constants.UI.chatPanelWidth
+        let height = Constants.UI.barHeight + 8 + Constants.UI.voiceButtonsHeight + responseHeight
+        resize(width: width, height: height)
+        makeKey()
+    }
+
     func showChat() {
         let width = Constants.UI.chatPanelWidth
         let height = Constants.UI.barHeight + 8 + Constants.UI.chatPanelHeight
@@ -90,8 +104,8 @@ final class FloatingPanelController {
         makeKey()
     }
 
-    func hideChat() {
-        resize(width: Constants.UI.barWidth, height: Constants.UI.barHeight)
+    func hideChat(barWidth: CGFloat = Constants.UI.barWidth) {
+        resize(width: barWidth, height: Constants.UI.barHeight)
         resignKey()
     }
 }
