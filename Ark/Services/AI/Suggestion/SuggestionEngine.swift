@@ -59,6 +59,7 @@ final class SuggestionEngine {
     private var lastUserOwnSpeechAt: Date?
     private var sessionHistory: [(action: String, answer: String)] = []
     private var automaticSuggestionsEnabled = true
+    private var consecutiveErrorCount = 0
 
     init(
         codexService: any SuggestionCodexClient,
@@ -304,6 +305,7 @@ final class SuggestionEngine {
                 guard self.activeGenerationID == request.requestID else { return }
 
                 self.buffer = response
+                self.consecutiveErrorCount = 0
 
                 if isManual {
                     self.sessionHistory.append((action: request.historyLabel ?? request.source, answer: response))
@@ -312,6 +314,10 @@ final class SuggestionEngine {
                 guard !(error is CancellationError) else { return }
                 guard self.activeGenerationID == request.requestID else { return }
                 self.buffer = "Error: \(error.localizedDescription)"
+                self.consecutiveErrorCount += 1
+                if self.consecutiveErrorCount >= 2 {
+                    self.pendingSignals.clear()
+                }
             }
 
             guard self.activeGenerationID == request.requestID else { return }
@@ -530,6 +536,7 @@ final class SuggestionEngine {
         lastCompletedSuggestionText = nil
         lastUserOwnSpeechAt = nil
         sessionHistory.removeAll()
+        consecutiveErrorCount = 0
         observers.forEach { $0.reset() }
     }
 

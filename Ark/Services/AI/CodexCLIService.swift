@@ -135,9 +135,17 @@ final class CodexCLIService: SuggestionCodexClient {
 
             try processInstance.run()
 
-            let stderrHandle = stderrPipeInstance.fileHandleForReading
+            defer {
+                if processInstance.isRunning {
+                    processInstance.terminate()
+                }
+                stdoutPipeInstance.fileHandleForReading.closeFile()
+                stderrPipeInstance.fileHandleForReading.closeFile()
+            }
+
+            // Drain stderr concurrently (prevents pipe buffer deadlock)
             let stderrCollector = Task.detached { () -> String in
-                let data = stderrHandle.readDataToEndOfFile()
+                let data = stderrPipeInstance.fileHandleForReading.readDataToEndOfFile()
                 return String(data: data, encoding: .utf8) ?? ""
             }
 
@@ -183,7 +191,10 @@ final class CodexCLIService: SuggestionCodexClient {
             }
 
             try Task.checkCancellation()
-            processInstance.waitUntilExit()
+
+            // Wait for exit off MainActor
+            await Task.detached { processInstance.waitUntilExit() }.value
+            let exitCode = Int(processInstance.terminationStatus)
             let stderr = await stderrCollector.value
 
             #if DEBUG
@@ -193,8 +204,8 @@ final class CodexCLIService: SuggestionCodexClient {
             #endif
 
             if streamResult.isEmpty {
-                if processInstance.terminationStatus != 0 {
-                    throw CodexError.failed(exit: Int(processInstance.terminationStatus), stderr: stderr)
+                if exitCode != 0 {
+                    throw CodexError.failed(exit: exitCode, stderr: stderr)
                 }
                 if !stderr.isEmpty {
                     throw CodexError.failed(exit: 0, stderr: "No model response. stderr: \(stderr)")
