@@ -223,14 +223,16 @@ struct TranscriptPanelView: View {
                     status: appState.captureStatusText(for: .me),
                     preview: appState.lastTranscriptPreview(for: .me),
                     diagnostics: appState.captureDiagnosticsText(for: .me),
-                    color: .green
+                    color: .green,
+                    audioLevel: appState.micCaptureState.audioLevel
                 )
                 statusCard(
                     title: TranscriptEntry.Speaker.interviewer.displayLabel,
                     status: appState.captureStatusText(for: .interviewer),
                     preview: appState.lastTranscriptPreview(for: .interviewer),
                     diagnostics: appState.captureDiagnosticsText(for: .interviewer),
-                    color: .blue
+                    color: .blue,
+                    audioLevel: appState.systemCaptureState.audioLevel
                 )
             }
         }
@@ -243,13 +245,17 @@ struct TranscriptPanelView: View {
         status: String,
         preview: String,
         diagnostics: String,
-        color: Color
+        color: Color,
+        audioLevel: Float = 0
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let isActive = audioLevel > 0.005
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(color.opacity(0.8))
+                    .fill(color.opacity(isActive ? 1.0 : 0.4))
                     .frame(width: 7, height: 7)
+                    .scaleEffect(isActive ? 1.3 : 1.0)
+                    .animation(.easeInOut(duration: 0.3), value: isActive)
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
                 Spacer(minLength: 0)

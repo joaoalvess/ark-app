@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 import SwiftUI
@@ -17,6 +18,7 @@ struct TranscriptCaptureState: Equatable, Sendable {
     var coalescedChunkCount = 0
     var discardedWindowCount = 0
     var lastError: String?
+    var audioLevel: Float = 0
 
     func status(now: Date = Date()) -> String {
         guard isCapturing else { return "Stopped" }
@@ -54,12 +56,21 @@ struct TranscriptCaptureState: Equatable, Sendable {
         return "No speech recognized yet."
     }
 
+    var audioLevelDB: Float {
+        guard audioLevel > 0 else { return -Float.infinity }
+        return 20 * log10f(audioLevel)
+    }
+
     var diagnosticsText: String {
         var parts = [
             "Queue \(queueDepth)",
             "Merged \(coalescedChunkCount)",
             "Discarded \(discardedWindowCount)"
         ]
+
+        if audioLevel > 0 {
+            parts.append(String(format: "%.0f dB", audioLevelDB))
+        }
 
         if let lastError, !lastError.isEmpty {
             parts.append(lastError)
@@ -69,17 +80,63 @@ struct TranscriptCaptureState: Equatable, Sendable {
     }
 }
 
+struct AudioRoutingValidationSnapshot: Equatable, Sendable {
+    let callbackCount: Int
+    let maxNativeRMS: Float
+    let maxConvertedRMS: Float
+
+    func outcome(threshold: Float) -> AudioRoutingValidationOutcome {
+        guard callbackCount > 0 else { return .noCallbacks }
+        guard maxNativeRMS >= threshold else { return .nativeSignalMissing }
+        guard maxConvertedRMS >= threshold else { return .conversionSignalMissing }
+        return .passed
+    }
+}
+
+enum AudioRoutingValidationOutcome: Equatable, Sendable {
+    case noCallbacks
+    case nativeSignalMissing
+    case conversionSignalMissing
+    case passed
+}
+
+final class AudioRoutingValidationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var maxNativeRMS: Float = 0
+    private var maxConvertedRMS: Float = 0
+    private var callbackCount = 0
+
+    func record(diagnostics: SystemAudioCaptureService.BufferDiagnostics) {
+        lock.withLock {
+            maxNativeRMS = max(maxNativeRMS, diagnostics.nativeRMS)
+            maxConvertedRMS = max(maxConvertedRMS, diagnostics.convertedRMS)
+            callbackCount += 1
+        }
+    }
+
+    func snapshot() -> AudioRoutingValidationSnapshot {
+        lock.withLock {
+            AudioRoutingValidationSnapshot(
+                callbackCount: callbackCount,
+                maxNativeRMS: maxNativeRMS,
+                maxConvertedRMS: maxConvertedRMS
+            )
+        }
+    }
+}
+
 @MainActor @Observable
 final class AppState {
     // Services
     var audioManager = AudioSessionManager()
     var whisperService: WhisperService
+    var openAIWhisperService = OpenAIWhisperService()
     var transcriptManager = TranscriptManager()
     var codexService: CodexCLIService
     var settingsStore: SettingsStore
     let suggestionEngine: SuggestionEngine
 
-    private let transcriptionCoordinator: TranscriptionCoordinator
+    private var transcriptionCoordinator: TranscriptionCoordinator
 
     // UI State
     var isListening = false
@@ -96,6 +153,9 @@ final class AppState {
     var voicePanelMeasuredHeight: CGFloat = 0
     var transcriptPanelMeasuredHeight: CGFloat = 0
     var isMicLoading = false
+    var isAudioRoutingValidationRunning = false
+    var audioRoutingValidationMessage: String?
+    var didAudioRoutingValidationSucceed: Bool?
 
     // Transcript diagnostics
     var micCaptureState = TranscriptCaptureState()
@@ -113,13 +173,19 @@ final class AppState {
         let codex = CodexCLIService()
         let settings = SettingsStore()
         let whisper = WhisperService()
+        let openAI = OpenAIWhisperService()
         self.codexService = codex
         self.settingsStore = settings
         self.whisperService = whisper
+        self.openAIWhisperService = openAI
         self.suggestionEngine = SuggestionEngine(codexService: codex, settingsStore: settings)
-        self.transcriptionCoordinator = TranscriptionCoordinator { job in
-            await whisper.transcribe(audioSamples: job.samples)
-        }
+        self.transcriptionCoordinator = TranscriptionCoordinator(perform: Self.makeTranscriptionPerform(
+            provider: settings.settings.transcriptionProvider,
+            whisper: whisper,
+            openAI: openAI,
+            cloudModel: settings.settings.cloudTranscriptionModel,
+            apiKey: settings.settings.openAIAPIKey
+        ))
 
         suggestionEngine.register(QuestionObserver())
         suggestionEngine.register(StuckObserver())
@@ -153,11 +219,105 @@ final class AppState {
     }
 
     func installAudioDriver() {
+        audioRoutingValidationMessage = nil
+        didAudioRoutingValidationSucceed = nil
         audioManager.driverManager.installDriver()
     }
 
     func recheckDriver() {
         audioManager.driverManager.checkInstallation()
+    }
+
+    func validateAudioRouting() async {
+        errorMessage = nil
+
+        guard !isListening else {
+            didAudioRoutingValidationSucceed = false
+            audioRoutingValidationMessage = "Pare a escuta atual antes de validar o ArkAudio."
+            return
+        }
+
+        audioManager.driverManager.checkInstallation()
+
+        if let preflightError = audioManager.driverManager.validationPreflightError() {
+            didAudioRoutingValidationSucceed = false
+            audioRoutingValidationMessage = preflightError
+            return
+        }
+
+        guard let driverDeviceID = audioManager.driverManager.findDriverDeviceID(),
+              let driverUID = audioManager.driverManager.detectedDriver?.uid,
+              let outputUID = audioManager.driverManager.currentDefaultOutputUID() else {
+            didAudioRoutingValidationSucceed = false
+            audioRoutingValidationMessage = "Não foi possível localizar o ArkAudio ou a saída padrão atual."
+            audioManager.driverManager.checkInstallation()
+            return
+        }
+
+        isAudioRoutingValidationRunning = true
+        didAudioRoutingValidationSucceed = nil
+        audioRoutingValidationMessage = "Toque qualquer áudio do sistema agora. O Ark vai ouvir o ArkAudio por 5 segundos."
+
+        let validationProbe = AudioRoutingValidationProbe()
+        let validationService = SystemAudioCaptureService()
+        validationService.onBufferDiagnostics = { diagnostics in
+            validationProbe.record(diagnostics: diagnostics)
+        }
+
+        defer {
+            validationService.stop()
+            isAudioRoutingValidationRunning = false
+        }
+
+        do {
+            try validationService.start(driverDeviceID: driverDeviceID)
+            try await Task.sleep(
+                nanoseconds: UInt64(Constants.AudioDriver.ROUTING_VALIDATION_DURATION_SECONDS * 1_000_000_000)
+            )
+
+            let snapshot = validationProbe.snapshot()
+            switch snapshot.outcome(threshold: Constants.AudioDriver.ROUTING_VALIDATION_RMS_THRESHOLD) {
+            case .noCallbacks:
+                didAudioRoutingValidationSucceed = false
+                audioRoutingValidationMessage = "Nenhum buffer chegou do ArkAudio. Verifique o Multi-Output Device."
+                audioManager.driverManager.checkInstallation()
+                return
+
+            case .nativeSignalMissing:
+                didAudioRoutingValidationSucceed = false
+                audioRoutingValidationMessage = """
+                O ArkAudio abriu, mas o sinal já chegou silencioso do Multi-Output \
+                (callbacks \(snapshot.callbackCount), RMS nativo \(formattedRMS(snapshot.maxNativeRMS)), RMS convertido \(formattedRMS(snapshot.maxConvertedRMS))). \
+                Verifique a ordem da lista, deixe sua saída física no topo e toque áudio contínuo.
+                """
+                audioManager.driverManager.checkInstallation()
+                return
+
+            case .conversionSignalMissing:
+                didAudioRoutingValidationSucceed = false
+                audioRoutingValidationMessage = """
+                O ArkAudio recebeu sinal antes da conversão, mas ele sumiu ao converter para 16 kHz mono \
+                (callbacks \(snapshot.callbackCount), RMS nativo \(formattedRMS(snapshot.maxNativeRMS)), RMS convertido \(formattedRMS(snapshot.maxConvertedRMS))). \
+                Isso aponta para o pipeline de captura do app.
+                """
+                audioManager.driverManager.checkInstallation()
+                return
+
+            case .passed:
+                break
+            }
+
+            audioManager.driverManager.markRoutingValidated(outputUID: outputUID, driverUID: driverUID)
+            didAudioRoutingValidationSucceed = true
+            audioRoutingValidationMessage = """
+            Validação concluída. O ArkAudio recebeu áudio do sistema nesta saída \
+            (callbacks \(snapshot.callbackCount), RMS nativo \(formattedRMS(snapshot.maxNativeRMS)), RMS convertido \(formattedRMS(snapshot.maxConvertedRMS))).
+            """
+        } catch {
+            didAudioRoutingValidationSucceed = false
+            audioRoutingValidationMessage = "Falha ao abrir o ArkAudio para validação: \(error.localizedDescription)"
+            audioManager.driverManager.checkInstallation()
+        }
     }
 
     func toggleListening() async {
@@ -306,29 +466,76 @@ final class AppState {
         syncSuggestionPresentation()
     }
 
+    private func formattedRMS(_ value: Float) -> String {
+        String(format: "%.6f", value)
+    }
+
     private func syncSuggestionPresentation() {
         let shouldEnable = isListening && panelMode == .voiceSuggestions
         suggestionEngine.setAutomaticSuggestionsEnabled(shouldEnable)
     }
 
+    private static func makeTranscriptionPerform(
+        provider: TranscriptionProvider,
+        whisper: WhisperService,
+        openAI: OpenAIWhisperService,
+        cloudModel: String = Constants.Transcription.OPENAI_WHISPER_MODEL,
+        apiKey: String = ""
+    ) -> @Sendable (TranscriptionJob) async -> String? {
+        switch provider {
+        case .local:
+            return { job in await whisper.transcribe(audioSamples: job.samples) }
+        case .cloud:
+            let capturedKey = apiKey
+            return { job in await openAI.transcribe(audioSamples: job.samples, model: cloudModel, apiKey: capturedKey) }
+        }
+    }
+
+    private func rebuildTranscriptionCoordinator() {
+        transcriptionResultsTask?.cancel()
+        transcriptionCoordinator = TranscriptionCoordinator(perform: Self.makeTranscriptionPerform(
+            provider: settingsStore.settings.transcriptionProvider,
+            whisper: whisperService,
+            openAI: openAIWhisperService,
+            cloudModel: settingsStore.settings.cloudTranscriptionModel,
+            apiKey: settingsStore.settings.openAIAPIKey
+        ))
+        setupTranscriptionResultsLoop()
+    }
+
     private func startListening() async {
+        audioManager.driverManager.checkInstallation()
+
         guard audioManager.driverManager.status == .installed else {
-            errorMessage = "Audio driver not installed. Install it in Settings."
+            errorMessage = audioManager.driverManager.startListeningErrorMessage()
             return
         }
 
         isMicLoading = true
 
+        let provider = settingsStore.settings.transcriptionProvider
+
         do {
-            if !whisperService.isModelLoaded {
-                await whisperService.loadModel(name: settingsStore.settings.whisperModel)
-                guard whisperService.isModelLoaded else {
-                    errorMessage = whisperService.error ?? "Failed to load the Whisper model."
+            switch provider {
+            case .local:
+                if !whisperService.isModelLoaded {
+                    await whisperService.loadModel(name: settingsStore.settings.whisperModel)
+                    guard whisperService.isModelLoaded else {
+                        errorMessage = whisperService.error ?? "Failed to load the Whisper model."
+                        isMicLoading = false
+                        return
+                    }
+                }
+            case .cloud:
+                openAIWhisperService.prepare(apiKey: settingsStore.settings.openAIAPIKey)
+                guard openAIWhisperService.isReady else {
+                    errorMessage = openAIWhisperService.error ?? "OpenAI API key não configurada."
                     isMicLoading = false
                     return
                 }
             }
 
+            rebuildTranscriptionCoordinator()
             listeningSessionID = UUID()
             await transcriptionCoordinator.reset()
             await transcriptionCoordinator.configure(
@@ -351,10 +558,14 @@ final class AppState {
             transitionPanel(to: .voiceSuggestions)
 
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard let self, self.isListening else { return }
-                if self.transcriptManager.entries.filter({ $0.speaker == .interviewer }).isEmpty {
-                    print("[Ark] WARNING: no system audio detected after 10s. Check BlackHole.")
+                let hasSystemActivity = self.systemCaptureState.lastAudioActivityAt != nil
+                let systemRMS = self.audioManager.storage.withLock { $0.systemRMSLevel }
+                if !hasSystemActivity {
+                    print("[Ark] WARNING: Sem atividade de áudio do sistema. Verifique o driver de áudio.")
+                } else if systemRMS < 0.001 {
+                    print("[Ark] WARNING: Áudio do sistema detectado mas silencioso. Verifique o volume.")
                 }
             }
         } catch {
@@ -515,9 +726,13 @@ final class AppState {
             )
         }
 
-        if let whisperError = whisperService.error, !whisperError.isEmpty {
+        let transcriptionError: String? = switch settingsStore.settings.transcriptionProvider {
+        case .local: whisperService.error
+        case .cloud: openAIWhisperService.error
+        }
+        if let transcriptionError, !transcriptionError.isEmpty {
             var state = captureState(for: output.source.speaker)
-            state.lastError = whisperError
+            state.lastError = transcriptionError
             setCaptureState(state, for: output.source.speaker)
         }
     }
@@ -527,6 +742,10 @@ final class AppState {
         state.isCapturing = true
         state.lastAudioActivityAt = timestamp
         state.lastError = nil
+        let rms = audioManager.storage.withLock { s in
+            source == .mic ? s.micRMSLevel : s.systemRMSLevel
+        }
+        state.audioLevel = rms
         setCaptureState(state, for: source.speaker)
     }
 
@@ -538,7 +757,11 @@ final class AppState {
         state.queueDepth = diagnostics.queueDepth
         state.coalescedChunkCount = diagnostics.coalescedChunkCount
         state.discardedWindowCount = diagnostics.discardedWindowCount
-        state.lastError = diagnostics.lastError ?? whisperService.error
+        let serviceError: String? = switch settingsStore.settings.transcriptionProvider {
+        case .local: whisperService.error
+        case .cloud: openAIWhisperService.error
+        }
+        state.lastError = diagnostics.lastError ?? serviceError
         setCaptureState(state, for: source.speaker)
     }
 

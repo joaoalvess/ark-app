@@ -30,7 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        appState.audioManager.aggregateManager.cleanup()
+        if appState.isListening {
+            appState.audioManager.stopListening()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

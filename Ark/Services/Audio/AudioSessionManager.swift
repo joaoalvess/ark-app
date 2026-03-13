@@ -7,7 +7,6 @@ final class AudioSessionManager {
     let micService = MicrophoneCaptureService()
     let systemService = SystemAudioCaptureService()
     let driverManager = AudioDriverManager()
-    let aggregateManager = AggregateDeviceManager()
 
     final class AudioBufferStorage: @unchecked Sendable {
         private let lock = NSLock()
@@ -16,6 +15,8 @@ final class AudioSessionManager {
         var onMicChunk: (([Float]) -> Void)?
         var onSystemChunk: (([Float]) -> Void)?
         var chunkSampleCount: Int
+        var micRMSLevel: Float = 0
+        var systemRMSLevel: Float = 0
 
         init(chunkSampleCount: Int) {
             self.chunkSampleCount = chunkSampleCount
@@ -44,9 +45,6 @@ final class AudioSessionManager {
         systemService.onAudioBuffer = { [weak self] buffer, _ in
             self?.handleBuffer(buffer, source: .system)
         }
-
-        // Restore original output if previous session crashed
-        aggregateManager.restoreIfNeeded()
     }
 
     func checkMicPermission() async {
@@ -64,20 +62,17 @@ final class AudioSessionManager {
     }
 
     func startListening(deviceID: String? = nil) throws {
-        guard let blackHoleDeviceID = driverManager.findBlackHoleDeviceID() else {
+        guard let driverDeviceID = driverManager.findDriverDeviceID() else {
             throw AudioSessionError.driverNotInstalled
         }
 
-        try aggregateManager.createAggregateDevice(blackHoleDeviceID: blackHoleDeviceID)
-        try aggregateManager.activateAsSystemOutput()
         try micService.start(deviceID: deviceID)
-        try systemService.start(blackHoleDeviceID: blackHoleDeviceID)
+        try systemService.start(driverDeviceID: driverDeviceID)
     }
 
     func stopListening() {
         micService.stop()
         systemService.stop()
-        aggregateManager.cleanup()
         storage.withLock { s in
             s.micBuffer.removeAll()
             s.systemBuffer.removeAll()
@@ -87,11 +82,18 @@ final class AudioSessionManager {
     nonisolated private func handleBuffer(_ buffer: AVAudioPCMBuffer, source: AudioSource) {
         guard let channelData = buffer.floatChannelData else { return }
         let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return }
         let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+
+        // Compute RMS level
+        var sum: Float = 0
+        for sample in samples { sum += sample * sample }
+        let rms = sqrtf(sum / Float(frameCount))
 
         let result: (chunk: [Float], callback: (([Float]) -> Void)?)? = storage.withLock { s in
             switch source {
             case .mic:
+                s.micRMSLevel = rms
                 s.micBuffer.append(contentsOf: samples)
                 if s.micBuffer.count >= s.chunkSampleCount {
                     let chunk = Array(s.micBuffer.prefix(s.chunkSampleCount))
@@ -99,6 +101,7 @@ final class AudioSessionManager {
                     return (chunk, s.onMicChunk)
                 }
             case .system:
+                s.systemRMSLevel = rms
                 s.systemBuffer.append(contentsOf: samples)
                 if s.systemBuffer.count >= s.chunkSampleCount {
                     let chunk = Array(s.systemBuffer.prefix(s.chunkSampleCount))
@@ -121,7 +124,7 @@ final class AudioSessionManager {
 
         var errorDescription: String? {
             switch self {
-            case .driverNotInstalled: "BlackHole audio driver not found. Install it in Settings."
+            case .driverNotInstalled: "ArkAudio não encontrado. Instale e valide o driver nas Configurações."
             }
         }
     }

@@ -3,21 +3,27 @@ import SwiftUI
 
 enum Constants {
     static let appName = "Ark"
-    static let whisperModel = "large-v3"
+    static let whisperModel = "large-v3-turbo"
     static let whisperLanguage = "pt"
     static let transcriptMaxDuration: TimeInterval = 30 * 60 // 30 minutes
-    static let chunkDuration: TimeInterval = 3 // seconds
+    static let chunkDuration: TimeInterval = 5 // seconds
     static let sampleRate: Double = 16_000
     static let codexTimeoutSeconds: TimeInterval = 300
 
     enum AudioDriver {
-        static let BLACKHOLE_UID_SUBSTRING = "BlackHole2ch"
-        static let DRIVER_HAL_PATH = "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver"
-        static let AGGREGATE_DEVICE_NAME = "Ark Audio Bridge"
-        static let AGGREGATE_DEVICE_UID = "com.ark.aggregate.bridge"
+        static let DEVICE_NAME = "ArkAudio 2ch"
+        static let DEVICE_UID_SUBSTRING = "ArkAudio"
+        static let DRIVER_BUNDLE_NAME = "ArkAudio2ch.driver"
+        static let DRIVER_HAL_PATH = "/Library/Audio/Plug-Ins/HAL/ArkAudio2ch.driver"
+        static let LEGACY_DEVICE_NAME = "BlackHole 2ch"
+        static let LEGACY_DEVICE_UID_SUBSTRING = "BlackHole2ch"
+        static let LEGACY_DRIVER_HAL_PATH = "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver"
         static let PKG_RESOURCE_NAME = "ArkAudioDriver"
         static let PKG_RESOURCE_EXT = "pkg"
-        static let ORIGINAL_OUTPUT_UID_KEY = "ArkOriginalOutputDeviceUID"
+        static let ROUTING_VALIDATED_OUTPUT_UID_KEY = "ArkAudioRoutingValidatedOutputUID"
+        static let ROUTING_VALIDATED_DRIVER_UID_KEY = "ArkAudioRoutingValidatedDriverUID"
+        static let ROUTING_VALIDATION_DURATION_SECONDS: TimeInterval = 5
+        static let ROUTING_VALIDATION_RMS_THRESHOLD: Float = 0.001
     }
 
     enum Suggestion {
