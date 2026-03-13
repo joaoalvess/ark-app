@@ -1,4 +1,5 @@
 import XCTest
+import CoreAudio
 @testable import Ark
 
 @MainActor
@@ -191,7 +192,7 @@ final class InterviewAssistantEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .idle)
     }
 
-    func testTranscriptionCoordinatorProcessesSourcesIndependently() async {
+    func testTranscriptionCoordinatorProcessesSourcesInParallel() async {
         let probe = TranscriptionProbe()
         let coordinator = TranscriptionCoordinator(windowDuration: 3, strideDuration: 1) { job in
             let label = "\(job.source.rawValue)-\(Int(job.samples.first ?? 0))-\(job.sequence)"
@@ -217,7 +218,7 @@ final class InterviewAssistantEngineTests: XCTestCase {
         let snapshot = await probe.snapshot()
 
         XCTAssertEqual(Set(results.map(\.source)), Set([.mic, .system]))
-        XCTAssertTrue(snapshot.maxRunning >= 2)
+        XCTAssertEqual(snapshot.maxRunning, 2)
         XCTAssertTrue(results.compactMap(\.text).contains("mic-1-0"))
         XCTAssertTrue(results.compactMap(\.text).contains("system-2-0"))
     }
@@ -446,6 +447,281 @@ final class InterviewAssistantEngineTests: XCTestCase {
         }
 
         XCTFail("Async condition not met before timeout", file: file, line: line)
+    }
+}
+
+@MainActor
+final class AudioDriverManagerTests: XCTestCase {
+    func testStatusIsNotInstalledWhenNoDriverIsPresent() {
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .notInstalled)
+    }
+
+    func testStatusDetectsLegacyBlackHole() {
+        let legacy = makeDevice(id: 76, name: "BlackHole 2ch", uid: "BlackHole2ch_UID")
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(devices: [legacy], defaultOutput: legacy),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .legacyDriverInstalled)
+        XCTAssertTrue(manager.statusDetail.contains("BlackHole"))
+    }
+
+    func testStatusNeedsRestartWhenArkBundleExistsButDriverIsNotLoaded() {
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(
+                existingPaths: [Constants.AudioDriver.DRIVER_HAL_PATH]
+            ),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .needsRestart)
+    }
+
+    func testStatusRequiresValidationWhenArkAudioIsDetectedWithoutStoredRouting() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let speakers = makeDevice(id: 111, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(devices: [arkAudio, speakers], defaultOutput: speakers),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .routingNotVerified)
+    }
+
+    func testValidationPreflightRejectsNonAggregateOutputWithoutArkAudio() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let speakers = makeDevice(id: 111, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(devices: [arkAudio, speakers], defaultOutput: speakers),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(
+            manager.validationPreflightError(),
+            "A saída padrão atual não é um Multi-Output Device. Crie um com sua saída física primeiro e o ArkAudio como secundário."
+        )
+    }
+
+    func testValidationPreflightRejectsAggregateWhenArkAudioIsFirstSubdevice() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let speakers = makeDevice(id: 111, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let multiOutput = makeDevice(id: 222, name: "Interview Mix", uid: "InterviewMix_UID")
+        let routing = AudioOutputRoutingSnapshot(
+            output: multiOutput,
+            kind: .aggregate,
+            subdevices: [
+                AudioOutputSubdeviceSnapshot(uid: arkAudio.uid, name: arkAudio.name, driftCompensationEnabled: true),
+                AudioOutputSubdeviceSnapshot(uid: speakers.uid, name: speakers.name, driftCompensationEnabled: false)
+            ],
+            mainSubdeviceUID: speakers.uid,
+            clockDeviceUID: nil
+        )
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(
+                devices: [arkAudio, speakers, multiOutput],
+                defaultOutput: multiOutput,
+                routingSnapshots: [multiOutput.uid: routing]
+            ),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(
+            manager.validationPreflightError(),
+            "O ArkAudio está no topo do Multi-Output Device. Deixe sua saída física como primeiro dispositivo e o ArkAudio como secundário."
+        )
+    }
+
+    func testValidationPreflightAllowsAggregateWithPhysicalOutputFirstAndArkAudioSecondary() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let speakers = makeDevice(id: 111, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let multiOutput = makeDevice(id: 222, name: "Interview Mix", uid: "InterviewMix_UID")
+        let routing = AudioOutputRoutingSnapshot(
+            output: multiOutput,
+            kind: .aggregate,
+            subdevices: [
+                AudioOutputSubdeviceSnapshot(uid: speakers.uid, name: speakers.name, driftCompensationEnabled: false),
+                AudioOutputSubdeviceSnapshot(uid: arkAudio.uid, name: arkAudio.name, driftCompensationEnabled: true)
+            ],
+            mainSubdeviceUID: speakers.uid,
+            clockDeviceUID: nil
+        )
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(
+                devices: [arkAudio, speakers, multiOutput],
+                defaultOutput: multiOutput,
+                routingSnapshots: [multiOutput.uid: routing]
+            ),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertNil(manager.validationPreflightError())
+    }
+
+    func testStatusBecomesInstalledWhenValidationMatchesCurrentOutput() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let multiOutput = makeDevice(id: 111, name: "Interview Mix", uid: "InterviewMix_UID")
+        let speakers = makeDevice(id: 112, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let routing = AudioOutputRoutingSnapshot(
+            output: multiOutput,
+            kind: .aggregate,
+            subdevices: [
+                AudioOutputSubdeviceSnapshot(uid: speakers.uid, name: speakers.name, driftCompensationEnabled: false),
+                AudioOutputSubdeviceSnapshot(uid: arkAudio.uid, name: arkAudio.name, driftCompensationEnabled: true)
+            ],
+            mainSubdeviceUID: speakers.uid,
+            clockDeviceUID: nil
+        )
+        let store = InMemoryAudioDriverValidationStore(
+            validatedOutputUID: multiOutput.uid,
+            validatedDriverUID: arkAudio.uid
+        )
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(
+                devices: [arkAudio, speakers, multiOutput],
+                defaultOutput: multiOutput,
+                routingSnapshots: [multiOutput.uid: routing]
+            ),
+            validationStore: store
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .installed)
+    }
+
+    func testStatusReturnsToRoutingNotVerifiedWhenDefaultOutputChangesAfterValidation() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let speakers = makeDevice(id: 110, name: "Alto-falantes", uid: "BuiltInSpeakerDevice")
+        let oldOutput = makeDevice(id: 111, name: "Interview Mix", uid: "InterviewMix_UID")
+        let newOutput = makeDevice(id: 112, name: "Interview Mix 2", uid: "InterviewMixTwo_UID")
+        let newRouting = AudioOutputRoutingSnapshot(
+            output: newOutput,
+            kind: .aggregate,
+            subdevices: [
+                AudioOutputSubdeviceSnapshot(uid: speakers.uid, name: speakers.name, driftCompensationEnabled: false),
+                AudioOutputSubdeviceSnapshot(uid: arkAudio.uid, name: arkAudio.name, driftCompensationEnabled: true)
+            ],
+            mainSubdeviceUID: speakers.uid,
+            clockDeviceUID: nil
+        )
+        let store = InMemoryAudioDriverValidationStore(
+            validatedOutputUID: oldOutput.uid,
+            validatedDriverUID: arkAudio.uid
+        )
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(
+                devices: [arkAudio, speakers, newOutput],
+                defaultOutput: newOutput,
+                routingSnapshots: [newOutput.uid: newRouting]
+            ),
+            validationStore: store
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(manager.status, .routingNotVerified)
+        XCTAssertTrue(manager.statusDetail.contains("saída padrão mudou"))
+    }
+
+    func testAudioRoutingValidationSnapshotClassifiesOutcomes() {
+        XCTAssertEqual(
+            AudioRoutingValidationSnapshot(callbackCount: 0, maxNativeRMS: 0, maxConvertedRMS: 0)
+                .outcome(threshold: Constants.AudioDriver.ROUTING_VALIDATION_RMS_THRESHOLD),
+            .noCallbacks
+        )
+        XCTAssertEqual(
+            AudioRoutingValidationSnapshot(callbackCount: 3, maxNativeRMS: 0.0004, maxConvertedRMS: 0.0002)
+                .outcome(threshold: Constants.AudioDriver.ROUTING_VALIDATION_RMS_THRESHOLD),
+            .nativeSignalMissing
+        )
+        XCTAssertEqual(
+            AudioRoutingValidationSnapshot(callbackCount: 3, maxNativeRMS: 0.01, maxConvertedRMS: 0.0002)
+                .outcome(threshold: Constants.AudioDriver.ROUTING_VALIDATION_RMS_THRESHOLD),
+            .conversionSignalMissing
+        )
+        XCTAssertEqual(
+            AudioRoutingValidationSnapshot(callbackCount: 3, maxNativeRMS: 0.01, maxConvertedRMS: 0.01)
+                .outcome(threshold: Constants.AudioDriver.ROUTING_VALIDATION_RMS_THRESHOLD),
+            .passed
+        )
+    }
+
+    func testValidationPreflightRejectsUsingArkAudioAsDirectOutput() {
+        let arkAudio = makeDevice(id: 91, name: "ArkAudio 2ch", uid: "ArkAudio2ch_UID")
+        let manager = AudioDriverManager(
+            hardwareInspector: MockAudioHardwareInspector(devices: [arkAudio], defaultOutput: arkAudio),
+            validationStore: InMemoryAudioDriverValidationStore()
+        )
+
+        manager.checkInstallation()
+
+        XCTAssertEqual(
+            manager.validationPreflightError(),
+            "O ArkAudio está como saída padrão direta. Crie um Multi-Output Device e selecione-o como saída do sistema."
+        )
+    }
+
+    private func makeDevice(id: AudioDeviceID, name: String, uid: String) -> AudioDeviceSnapshot {
+        AudioDeviceSnapshot(id: id, uid: uid, name: name)
+    }
+}
+
+private struct MockAudioHardwareInspector: AudioHardwareInspecting {
+    var devices: [AudioDeviceSnapshot] = []
+    var defaultOutput: AudioDeviceSnapshot?
+    var routingSnapshots: [String: AudioOutputRoutingSnapshot] = [:]
+    var existingPaths: Set<String> = []
+
+    func allDevices() -> [AudioDeviceSnapshot] {
+        devices
+    }
+
+    func defaultOutputDevice() -> AudioDeviceSnapshot? {
+        defaultOutput
+    }
+
+    func outputRoutingSnapshot(for device: AudioDeviceSnapshot) -> AudioOutputRoutingSnapshot? {
+        routingSnapshots[device.uid] ?? AudioOutputRoutingSnapshot(
+            output: device,
+            kind: .direct,
+            subdevices: [],
+            mainSubdeviceUID: nil,
+            clockDeviceUID: nil
+        )
+    }
+
+    func fileExists(atPath path: String) -> Bool {
+        existingPaths.contains(path)
+    }
+}
+
+private final class InMemoryAudioDriverValidationStore: AudioDriverValidationStoring {
+    var validatedOutputUID: String?
+    var validatedDriverUID: String?
+
+    init(validatedOutputUID: String? = nil, validatedDriverUID: String? = nil) {
+        self.validatedOutputUID = validatedOutputUID
+        self.validatedDriverUID = validatedDriverUID
     }
 }
 

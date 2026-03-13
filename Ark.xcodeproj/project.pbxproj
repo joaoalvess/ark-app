@@ -52,6 +52,8 @@
 		A10043 /* QuestionObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10043 /* QuestionObserver.swift */; };
 		A10044 /* StuckObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10044 /* StuckObserver.swift */; };
 		A10045 /* FollowUpObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10045 /* FollowUpObserver.swift */; };
+		A10046 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10046 /* KeychainService.swift */; };
+		A10047 /* OpenAIWhisperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10047 /* OpenAIWhisperService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,6 +115,8 @@
 		B10043 /* QuestionObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionObserver.swift; sourceTree = "<group>"; };
 		B10044 /* StuckObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StuckObserver.swift; sourceTree = "<group>"; };
 		B10045 /* FollowUpObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowUpObserver.swift; sourceTree = "<group>"; };
+		B10046 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		B10047 /* OpenAIWhisperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIWhisperService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -219,6 +223,7 @@
 			children = (
 				B10011 /* WhisperService.swift */,
 				B10012 /* TranscriptManager.swift */,
+				B10047 /* OpenAIWhisperService.swift */,
 			);
 			path = Transcription;
 			sourceTree = "<group>";
@@ -250,6 +255,7 @@
 			isa = PBXGroup;
 			children = (
 				B10015 /* SettingsStore.swift */,
+				B10046 /* KeychainService.swift */,
 			);
 			path = Persistence;
 			sourceTree = "<group>";
@@ -481,6 +487,8 @@
 				A10043 /* QuestionObserver.swift in Sources */,
 				A10044 /* StuckObserver.swift in Sources */,
 				A10045 /* FollowUpObserver.swift in Sources */,
+				A10046 /* KeychainService.swift in Sources */,
+				A10047 /* OpenAIWhisperService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
