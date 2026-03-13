@@ -1,0 +1,11 @@
+{
+  "name": "ArkAudio 2ch",
+  "bundle_id": "com.ark.audio.ArkAudio2ch",
+  "product_name": "ArkAudio2ch",
+  "executable_name": "ArkAudio",
+  "version": "0.6.1",
+  "source_repo": "https://github.com/ExistentialAudio/BlackHole",
+  "source_tag": "v0.6.1",
+  "local_only": true,
+  "generated_at_utc": "2026-03-12T23:22:08Z"
+}
