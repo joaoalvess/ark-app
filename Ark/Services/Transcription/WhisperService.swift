@@ -288,10 +288,7 @@ actor TranscriptionCoordinator {
     }
 
     private func dequeueJob(for source: TranscriptionSource) -> TranscriptionJob? {
-        guard var state = sourceStates[source], !state.queue.isEmpty else {
-            return nil
-        }
-
+        guard var state = sourceStates[source], !state.queue.isEmpty else { return nil }
         let job = state.queue.removeFirst()
         sourceStates[source] = state
         return job
@@ -353,7 +350,8 @@ private struct UnsafeWhisperKit: @unchecked Sendable {
 
 private actor WhisperRuntime {
     private var whisperKit: UnsafeWhisperKit?
-
+    private var lastTranscribedText: String?
+    private var consecutiveRepeatCount = 0
     func loadModel(name: String) async throws {
         let config = WhisperKitConfig(
             model: name,
@@ -362,6 +360,7 @@ private actor WhisperRuntime {
         )
         let loadedWhisperKit = try await WhisperKit(config)
         whisperKit = UnsafeWhisperKit(value: loadedWhisperKit)
+        resetHallucinationState()
     }
 
     func transcribe(audioSamples: [Float], language: String) async throws -> String? {
@@ -371,8 +370,16 @@ private actor WhisperRuntime {
             audioArray: audioSamples,
             decodeOptions: DecodingOptions(
                 language: language,
+                temperature: 0.0,
+                temperatureIncrementOnFallback: 0.0,
+                temperatureFallbackCount: 0,
+                sampleLength: 128,
+                usePrefillPrompt: true,
+                usePrefillCache: true,
                 skipSpecialTokens: true,
-                suppressBlank: true
+                withoutTimestamps: true,
+                suppressBlank: true,
+                noSpeechThreshold: 0.3
             )
         )
 
@@ -380,7 +387,34 @@ private actor WhisperRuntime {
             .map(\.text)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
+
+        guard !text.isEmpty else { return nil }
+        return isHallucination(text) ? nil : text
+    }
+
+    func resetHallucinationState() {
+        lastTranscribedText = nil
+        consecutiveRepeatCount = 0
+    }
+
+    private func isHallucination(_ text: String) -> Bool {
+        let normalized = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if Constants.Hallucination.BLOCKLIST.contains(normalized) {
+            return true
+        }
+
+        if normalized == lastTranscribedText {
+            consecutiveRepeatCount += 1
+            if consecutiveRepeatCount > Constants.Hallucination.MAX_CONSECUTIVE_REPEATS {
+                return true
+            }
+        } else {
+            lastTranscribedText = normalized
+            consecutiveRepeatCount = 1
+        }
+
+        return false
     }
 }
 

@@ -23,37 +23,74 @@ struct SettingsView: View {
 
             AudioSetupView(appState: appState)
 
-            Section("Modelo WhisperKit") {
-                Picker("Modelo", selection: $appState.settingsStore.settings.whisperModel) {
-                    Text("large-v3 (melhor qualidade)").tag("large-v3")
-                    Text("large-v3-turbo (mais rapido)").tag("large-v3-turbo")
-                    Text("medium (leve)").tag("medium")
+            Section("Transcrição") {
+                Picker("Provedor", selection: $appState.settingsStore.settings.transcriptionProvider) {
+                    Text("Local").tag(TranscriptionProvider.local)
+                    Text("Cloud").tag(TranscriptionProvider.cloud)
                 }
+                .pickerStyle(.segmented)
 
-                HStack {
-                    Text("Status do modelo")
-                    Spacer()
-                    if appState.whisperService.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Carregando...")
-                            .font(.caption)
-                    } else if appState.whisperService.isModelLoaded {
-                        Label("Carregado", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Nao carregado", systemImage: "circle")
-                            .foregroundStyle(.secondary)
+                if appState.settingsStore.settings.transcriptionProvider == .local {
+                    Picker("Modelo", selection: $appState.settingsStore.settings.whisperModel) {
+                        Text("large-v3 (melhor qualidade)").tag("large-v3")
+                        Text("large-v3-turbo (mais rapido)").tag("large-v3-turbo")
+                        Text("medium (leve)").tag("medium")
                     }
-                }
 
-                if !appState.whisperService.isModelLoaded && !appState.whisperService.isLoading {
-                    Button("Baixar Modelo") {
-                        Task {
-                            await appState.whisperService.loadModel(
-                                name: appState.settingsStore.settings.whisperModel
-                            )
+                    HStack {
+                        Text("Status do modelo")
+                        Spacer()
+                        if appState.whisperService.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Carregando...")
+                                .font(.caption)
+                        } else if appState.whisperService.isModelLoaded {
+                            Label("Carregado", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Nao carregado", systemImage: "circle")
+                                .foregroundStyle(.secondary)
                         }
+                    }
+
+                    if !appState.whisperService.isModelLoaded && !appState.whisperService.isLoading {
+                        Button("Baixar Modelo") {
+                            Task {
+                                await appState.whisperService.loadModel(
+                                    name: appState.settingsStore.settings.whisperModel
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Picker("Modelo", selection: $appState.settingsStore.settings.cloudTranscriptionModel) {
+                        Text("Mini (rec.)").tag("gpt-4o-mini-transcribe")
+                        Text("Standard").tag("gpt-4o-transcribe")
+                    }
+                    .pickerStyle(.segmented)
+
+                    SecureField("API Key da OpenAI", text: $appState.settingsStore.settings.openAIAPIKey)
+                        .onChange(of: appState.settingsStore.settings.openAIAPIKey) {
+                            appState.openAIWhisperService.prepare(apiKey: appState.settingsStore.settings.openAIAPIKey)
+                        }
+
+                    HStack {
+                        Text("Status")
+                        Spacer()
+                        if appState.openAIWhisperService.isReady {
+                            Label("Configurado", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Não configurado", systemImage: "exclamationmark.circle")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+
+                    if let error = appState.openAIWhisperService.error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -93,6 +130,21 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 580)
+        .frame(width: 450, height: 700)
+        .onAppear {
+            migrateKeychainKeyIfNeeded()
+            appState.recheckDriver()
+            appState.openAIWhisperService.prepare(apiKey: appState.settingsStore.settings.openAIAPIKey)
+        }
+    }
+
+    private func migrateKeychainKeyIfNeeded() {
+        let keychainKey = "openai_api_key"
+        if appState.settingsStore.settings.openAIAPIKey.isEmpty,
+           let savedKey = KeychainService.load(key: keychainKey),
+           !savedKey.isEmpty {
+            appState.settingsStore.settings.openAIAPIKey = savedKey
+            KeychainService.delete(key: keychainKey)
+        }
     }
 }

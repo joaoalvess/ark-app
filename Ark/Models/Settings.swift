@@ -1,5 +1,10 @@
 import Foundation
 
+enum TranscriptionProvider: String, Codable, CaseIterable {
+    case local
+    case cloud
+}
+
 struct AppSettings: Codable {
     var whisperModel: String = Constants.whisperModel
     var inputDeviceID: String?
@@ -8,6 +13,9 @@ struct AppSettings: Codable {
     var aiModel: String = "gpt-5.4"
     var aiReasoningLevel: String = "high"
     var assistantProfile: AssistantProfile = .techInterview
+    var transcriptionProvider: TranscriptionProvider = .local
+    var cloudTranscriptionModel: String = Constants.Transcription.OPENAI_WHISPER_MODEL
+    var openAIAPIKey: String = ""
 
     enum CodingKeys: String, CodingKey {
         case whisperModel
@@ -17,6 +25,9 @@ struct AppSettings: Codable {
         case aiModel
         case aiReasoningLevel
         case assistantProfile
+        case transcriptionProvider
+        case cloudTranscriptionModel
+        case openAIAPIKey
     }
 
     init() {}
@@ -34,5 +45,8 @@ struct AppSettings: Codable {
         aiModel = try container.decodeIfPresent(String.self, forKey: .aiModel) ?? "gpt-5.4"
         aiReasoningLevel = try container.decodeIfPresent(String.self, forKey: .aiReasoningLevel) ?? "high"
         assistantProfile = try container.decodeIfPresent(AssistantProfile.self, forKey: .assistantProfile) ?? .techInterview
+        transcriptionProvider = try container.decodeIfPresent(TranscriptionProvider.self, forKey: .transcriptionProvider) ?? .local
+        cloudTranscriptionModel = try container.decodeIfPresent(String.self, forKey: .cloudTranscriptionModel) ?? Constants.Transcription.OPENAI_WHISPER_MODEL
+        openAIAPIKey = try container.decodeIfPresent(String.self, forKey: .openAIAPIKey) ?? ""
     }
 }

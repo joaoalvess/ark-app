@@ -46,6 +46,22 @@ enum Constants {
         static let REVEAL_WAIT_NANOSECONDS: UInt64 = 20_000_000
     }
 
+    enum Transcription {
+        static let OPENAI_WHISPER_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions"
+        static let OPENAI_WHISPER_MODEL = "gpt-4o-mini-transcribe"
+    }
+
+    enum Hallucination {
+        static let MAX_CONSECUTIVE_REPEATS = 2
+        static let BLOCKLIST: Set<String> = [
+            "obrigado", "obrigado.", "obrigada", "obrigada.",
+            "legendas por", "legendas pela", "legenda adriana zanotto",
+            "thank you", "thank you.", "thanks for watching",
+            "please subscribe", "like and subscribe",
+            "subtítulos", "sous-titres", "untertitel",
+        ]
+    }
+
     enum UI {
         static let barHeight: CGFloat = 48
         static let barWidth: CGFloat = 220
