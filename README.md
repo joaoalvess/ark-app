@@ -1,20 +1,21 @@
 # 🛡️ Ark
 
-**Your copilot for interviews.**
+**Personal AI assistant for macOS** — real-time transcription + contextual AI in a floating panel.
 
-Ark is a native macOS app that runs discreetly in the menu bar, capturing audio in real time (microphone + system audio), transcribing with Whisper, and using AI to suggest answers during interviews.
+Ark is a native macOS app that lives in your menu bar, capturing conversation audio in real time (microphone + system audio), transcribing with Whisper, and providing contextual AI suggestions through a sleek floating panel. Perfect for meetings, calls, pair programming, coaching sessions, and study groups.
 
 ---
 
 ## ✨ Features
 
-- 🎙️ **Dual audio capture** — records your microphone and system audio (interviewer) simultaneously
+- 🎙️ **Dual audio capture** — records your microphone and system audio (calls, meetings) simultaneously
 - 📝 **Real-time transcription** — powered by Whisper (`large-v3`) with native Portuguese support
-- 🤖 **Auto suggestions** — AI analyzes what the interviewer said and suggests answers on the spot
-- 💬 **Built-in chat** — floating panel to ask questions about the ongoing interview
+- 🤖 **Contextual suggestions** — AI analyzes the conversation and provides relevant suggestions on the spot
+- 💬 **Built-in chat** — floating panel to ask questions about the ongoing conversation
+- 🎭 **Multiple profiles** — generalist, code review, tech coaching — tailor the assistant to your context
 - 🔥 **Streaming responses** — AI answers appear in real time, no waiting
 - ⚡ **Floating bar** — minimal pill-shaped interface that floats over any app
-- 🎯 **Menu bar** — quick controls via menu bar icon with global shortcut (`⌘ + Enter`)
+- 🎯 **Menu bar** — quick controls via menu bar icon with global shortcut (`Cmd + Enter`)
 - ⚙️ **Configurable** — AI model, Whisper model, audio device, reasoning level
 
 ## 🏗️ Architecture
@@ -22,7 +23,7 @@ Ark is a native macOS app that runs discreetly in the menu bar, capturing audio 
 ```
 Ark/
 ├── App/                    # AppDelegate, AppState, Constants
-├── Models/                 # ChatMessage, Settings, TranscriptEntry
+├── Models/                 # ChatMessage, Settings, TranscriptEntry, AssistantProfile
 ├── Services/
 │   ├── Audio/              # Mic & system audio capture
 │   ├── Transcription/      # Whisper + transcript management
@@ -48,10 +49,10 @@ Ark/
 
 1. Clone the repository
 2. Open `Ark.xcodeproj` in Xcode
-3. Build and run (`⌘ + R`)
-4. The 🎙️ icon appears in the menu bar
-5. Set up your API key in settings (`⌘ + ,`)
-6. Start listening with `⌘ + Enter` and open the chat
+3. Build and run (`Cmd + R`)
+4. The mic icon appears in the menu bar
+5. Set up your API key in settings (`Cmd + ,`)
+6. Start listening with `Cmd + Enter` and open the chat
 
 ## 🛠️ Stack
 
